@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><title>Leden</title></head>
+<body>
+<h2>Leden</h2>
+<p><a href="/logout">Logout</a></p>
+<table border="1" cellpadding="4">
+  <tr>
+    <th>ledenid</th><th>voornaam</th><th>achternaam</th><th>GSM</th><th>created_at</th>
+  </tr>
+  {% for row in leden %}
+  <tr>
+    <td>{{ row.ledenid }}</td>
+    <td>{{ row.voornaam }}</td>
+    <td>{{ row.achternaam }}</td>
+    <td>{{ row.GSM }}</td>
+    <td>{{ row.created_at }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</body>
+</html>

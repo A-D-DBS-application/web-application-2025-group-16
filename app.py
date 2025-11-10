@@ -1,70 +1,84 @@
-# 1. Alle benodigde imports
-import os
-from flask import Flask, render_template, request, redirect, url_for
-from supabase import create_client, Client
+from flask import Flask, render_template, request, redirect, session, url_for
+import os, logging, traceback
+from werkzeug.exceptions import HTTPException
+from auth import sign_up_user, sign_in_user, list_leden
+import re
 
-# (Zorg dat je 'python-dotenv' hebt geïnstalleerd met 'pip install python-dotenv')
-# Laad de omgevingsvariabelen (zoals SUPABASE_URL) uit je .env bestand
-from dotenv import load_dotenv
-load_dotenv()
-
-# 2. Initialiseer de Flask App
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
+logging.basicConfig(level=logging.INFO)
 
-# 3. Initialiseer de Supabase Client
-# Haal je keys uit de environment variables (veilig!)
-url = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(url, key)
+@app.route("/health")
+def health():
+    return {"status": "ok"}
 
-# --- Routes ---
+@app.route("/")
+def index():
+    return redirect(url_for("home" if session.get("user_id") else "login"))
 
-# 4. Route voor de Homepagina ('/')
-@app.route('/')
+@app.route("/home")
 def home():
-    # Voorbeeld van data meegeven aan je template
-    club_naam_uit_db = "De Gouden Aandelen" 
-    return render_template('index.html', club_naam=club_naam_uit_db)
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    return render_template("home.html")  # simple HOME page
 
-# 5. Route voor Inloggen ('/inloggen')
-@app.route('/inloggen', methods=['GET', 'POST'])
-def inloggen():
-    if request.method == 'POST':
-        # Als het formulier is verstuurd (POST)
-        username = request.form['username']
-        password = request.form['password']
-        
-        # --- HIER KOMT JE SUPABASE AUTHENTICATIE LOGICA ---
-        # (bijv. supabase.auth.sign_in_with_password(...))
-        
-        print(f"Gebruiker probeert in te loggen: {username}")
-        
-        # Stuur door naar het portfolio na "succesvol" inloggen
-        return redirect(url_for('portfolio')) 
-        
-    # Als de pagina gewoon wordt geladen (GET), toon het loginformulier
-    # Hiervoor heb je 'templates/login.html' nodig
-    return render_template('login.html')
+@app.route("/leden")
+def leden():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    ok, res = list_leden()
+    if not ok:
+        return render_template("leden.html", leden=[], error=f"Fetch error: {res}")
+    return render_template("leden.html", leden=res)
 
-# 6. Route voor het Portfolio ('/portfolio')
-@app.route('/portfolio')
-def portfolio():
-    # --- HIER KOMT JE SUPABASE DATA OPHAAL LOGICA ---
-    # 1. Check eerst of de gebruiker wel is ingelogd (via 'session')
-    
-    # 2. Haal de data op (voorbeeld)
-    try:
-        response = supabase.table('investments').select("*").execute()
-        data = response.data
-    except Exception as e:
-        print(f"Fout bij ophalen data: {e}")
-        data = [] # Geef een lege lijst bij een fout
-    
-    # Geef de opgehaalde data mee aan het template
-    # Hiervoor heb je 'templates/portfolio.html' nodig
-    return render_template('portfolio.html', investments=data)
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
-# 7. Start de applicatie
-if __name__ == '__main__':
-    app.run(debug=True) # debug=True is voor ontwikkeling
-    
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    mode = request.form.get("mode") if request.method == "POST" else request.args.get("mode", "login")
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if not email:
+            return render_template("login.html", error="Voer een e-mailadres in.", email_value=email, mode_value=mode or "login")
+        pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+        if not re.match(pattern, email):
+            return render_template("login.html", error="Ongeldig e-mailadres formaat.", email_value=email, mode_value=mode or "login")
+        if mode == "register":
+            return redirect(url_for("register", email=email))
+        ok, res = sign_in_user(email)
+        if not ok:
+            return render_template("login.html", error=res, email_value=email, mode_value="login")
+        session["user_id"] = res.get("ledenid")
+        session["email"] = res.get("email")
+        return redirect(url_for("home"))
+    preset_email = request.args.get("email", "")
+    return render_template("login.html", email_value=preset_email, mode_value=mode or "login")
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        voornaam = request.form.get("voornaam", "").strip()
+        achternaam = request.form.get("achternaam", "").strip()
+        gsm_raw = request.form.get("gsm", "").strip()
+        digits = "".join(ch for ch in gsm_raw if ch.isdigit())
+        gsm = int(digits) if digits else 0
+        ok, res = sign_up_user(email, voornaam, achternaam, gsm)
+        if ok:
+            return redirect(url_for("login", email=email, mode="login"))
+        return render_template("register.html", error=res, email_value=email, voornaam_value=voornaam, achternaam_value=achternaam, gsm_value=gsm_raw)
+    return render_template("register.html", email_value=request.args.get("email", ""))
+
+@app.errorhandler(Exception)
+def handle_any_exception(e):
+    if isinstance(e, HTTPException):
+        return e  # let Flask serve 404/other HTTP errors as-is
+    logging.error("Unhandled exception: %s", e)
+    traceback.print_exc()
+    return render_template("error.html", error=str(e)), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
