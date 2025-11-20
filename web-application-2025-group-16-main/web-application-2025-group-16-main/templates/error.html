@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+    <title>Error</title>
+</head>
+<body>
+    {% extends "base.html" %}
+    {% block title %}Fout — ClubApp{% endblock %}
+    {% block content %}
+    <div class="container py-5">
+      <div class="card border-danger">
+        <div class="card-body text-center">
+          <h3 class="h6 text-danger">Er is iets misgegaan</h3>
+          <p class="mb-3">{{ error }}</p>
+          <a href="{{ url_for('index') }}" class="btn btn-secondary">Terug naar start</a>
+        </div>
+      </div>
+    </div>
+    {% endblock %}
+</body>
+</html>

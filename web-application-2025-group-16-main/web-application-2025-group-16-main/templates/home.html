@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+    <title>Home — ClubApp</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% block title %}Home — ClubApp{% endblock %}
+{% block content %}
+<div class="container-fluid p-0">
+  <section class="home-hero">
+    <div class="hero-inner">
+      <div class="brand">Investment Group Manager</div>
+      <h1>Investment Group Manager</h1>
+      <p class="lead">Create or join investment groups to manage portfolios together.</p>
+
+      <div class="btn-row mt-4">
+        {% if session.get('user_id') %}
+          <a class="btn btn-light btn-lg" href="{{ url_for('leden') }}">Bekijk leden</a>
+          <a class="btn btn-outline-light btn-lg" href="{{ url_for('logout') }}">Uitloggen</a>
+        {% else %}
+          <a class="btn btn-light btn-lg" href="{{ url_for('login') }}">Inloggen</a>
+          <a class="btn btn-outline-light btn-lg" href="{{ url_for('register') }}">Registreren</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+</body>
+</html>

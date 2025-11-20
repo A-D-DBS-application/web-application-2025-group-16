@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head><title>Register</title></head>
+<body>
+<h2>Register</h2>
+{% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+<form method="post" action="{{ url_for('register') }}">
+  <label>Email<br><input type="email" name="email" required value="{{ email_value|default('') }}"></label><br>
+  <label>Voornaam<br><input type="text" name="voornaam" required value="{{ voornaam_value|default('') }}"></label><br>
+  <label>Achternaam<br><input type="text" name="achternaam" required value="{{ achternaam_value|default('') }}"></label><br>
+  <label>GSM<br><input type="text" name="gsm" required value="{{ gsm_value|default('') }}"></label><br><br>
+  <button type="submit">Register</button>
+</form>
+<p><a href="{{ url_for('login') }}">Back to login</a></p>
+</body>
+</html>
