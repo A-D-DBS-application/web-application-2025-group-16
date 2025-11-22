@@ -1,91 +1,57 @@
-from dotenv import load_dotenv
 import os
-from typing import Tuple, Any
 from supabase import create_client, Client
 
-load_dotenv()
+# --- CONFIGURATIE ---
+# Vul hier je Supabase URL en SERVICE KEY in
+SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M"
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
+# Initialiseer Supabase
+try:
+    # Debug print om te checken of de key geladen is
+    print(f"--- DEBUG: Auth script start. URL ingesteld? {'Ja' if SUPABASE_URL else 'Nee'}")
+    
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("--- DEBUG: Supabase verbinding succesvol ---")
+except Exception as e:
+    print(f"Supabase init error: {e}")
 
-supabase: Client | None = None
-if SUPABASE_URL and SUPABASE_KEY:
+def sign_in_user(email):
+    """Zoekt een gebruiker in de tabel 'Leden' op basis van email"""
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        response = supabase.table('Leden').select("*").eq('email', email).execute()
+        # Als we data terugkrijgen, is de gebruiker gevonden
+        if response.data and len(response.data) > 0:
+            return True, response.data[0] # Return de eerste gebruiker
+        else:
+            return False, "Geen gebruiker gevonden met dit e-mailadres."
     except Exception as e:
-        supabase = None
-        print("Supabase init error:", e)
-else:
-    print("Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env")
+        return False, str(e)
 
-def _require_client():
-    if supabase is None:
-        raise RuntimeError("Supabase client not initialized. Check .env variables.")
-
-def _normalize_email(email: str) -> str:
-    return email.strip().lower()
-
-def _sanitize_gsm(gsm: int | str) -> int:
-    if isinstance(gsm, str):
-        digits = "".join(ch for ch in gsm if ch.isdigit())
-        return int(digits) if digits else 0
-    return gsm
-
-def _extract_data(res) -> list:
-    # Handles both PostgrestResponse (.data) and dict {"data": [...}]
+def sign_up_user(email, voornaam, achternaam, gsm):
+    """Maakt een nieuwe gebruiker aan in de tabel 'Leden'"""
     try:
-        if hasattr(res, "data"):
-            return res.data or []
-        if isinstance(res, dict):
-            return res.get("data", []) or []
-    except Exception:
-        pass
-    return []
+        # Eerst checken of email al bestaat
+        check = supabase.table('Leden').select("*").eq('email', email).execute()
+        if check.data and len(check.data) > 0:
+            return False, "Dit e-mailadres is al in gebruik."
 
-def email_exists(email: str) -> bool:
-    try:
-        _require_client()
-        r = supabase.table("Leden").select("ledenid").eq("email", _normalize_email(email)).limit(1).execute()
-        data = _extract_data(r)
-        return len(data) > 0
-    except Exception:
-        return False
-
-def sign_up_user(email: str, voornaam: str, achternaam: str, gsm: int) -> Tuple[bool, Any]:
-    email = _normalize_email(email)
-    gsm = _sanitize_gsm(gsm)
-    try:
-        _require_client()
-        if email_exists(email):
-            return False, "Email already registered."
-        supabase.table("Leden").insert({
+        # Nieuwe gebruiker invoegen
+        new_user = {
+            "email": email,
             "voornaam": voornaam,
             "achternaam": achternaam,
-            "GSM": gsm,
-            "email": email
-        }).execute()
-        return True, "Registered."
+            "GSM": gsm
+        }
+        response = supabase.table('Leden').insert(new_user).execute()
+        return True, "Gebruiker succesvol aangemaakt."
     except Exception as e:
-        return False, f"Registration error: {e}"
+        return False, str(e)
 
-def sign_in_user(email: str) -> Tuple[bool, Any]:
-    email = _normalize_email(email)
-    if not email:
-        return False, "Voer een e-mailadres in."
+def list_leden():
+    """Haalt alle leden op"""
     try:
-        _require_client()
-        res = supabase.table("Leden").select("ledenid,email").eq("email", email).limit(1).execute()
-        data = _extract_data(res)
-        if not data:
-            return False, "E-mailadres niet gevonden. Probeer opnieuw."
-        return True, data[0]
+        response = supabase.table('Leden').select("*").execute()
+        return True, response.data
     except Exception as e:
-        return False, f"Inlogfout: {e}"
-
-def list_leden() -> Tuple[bool, Any]:
-    try:
-        _require_client()
-        res = supabase.table("Leden").select("*").order("created_at", desc=True).execute()
-        return True, _extract_data(res)
-    except Exception as e:
-        return False, e
+        return False, str(e)

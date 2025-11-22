@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beleggingsclub Portefeuille</title>
+    
+    <!-- Styling & Iconen -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Supabase & Grafieken -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- Navigatie -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <div class="bg-blue-600 p-1.5 rounded-lg">
+                        <i data-lucide="trending-up" class="h-6 w-6 text-white"></i>
+                    </div>
+                    <span class="font-bold text-xl text-slate-900">InvestClub</span>
+                </div>
+                <div class="flex gap-6 text-sm font-medium">
+                    <a href="/home" class="text-slate-500 hover:text-blue-600 transition-colors">Home</a>
+                    <a href="/portfolio" class="text-blue-600">Portefeuille</a>
+                    <a href="/logout" class="text-red-500 hover:text-red-700 transition-colors">Uitloggen</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Titel & Acties -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Portefeuille Overzicht</h1>
+                <p class="text-slate-500 text-sm">Real-time inzicht in spreiding en rendement.</p>
+            </div>
+            <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                Verversen
+            </button>
+        </div>
+
+        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded shadow-sm mb-6">
+            <strong class="font-bold">Fout!</strong> <span id="error-text"></span>
+        </div>
+
+        <!-- 1. KPI KAARTEN (Totalen) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Totale Waarde -->
+            <div class="glass-card p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-blue-100 text-sm font-medium mb-1">Totale Waarde</p>
+                        <h2 id="total-value" class="text-3xl font-bold">Laden...</h2>
+                    </div>
+                    <div class="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                        <i data-lucide="wallet" class="h-6 w-6 text-white"></i>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-center gap-2">
+                    <span class="bg-white/20 px-2 py-1 rounded text-xs font-medium backdrop-blur-sm">
+                        <span id="position-count">0</span> posities
+                    </span>
+                </div>
+            </div>
+
+            <!-- Winst/Verlies -->
+            <div class="glass-card p-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium mb-1">Totaal Rendement</p>
+                        <h2 id="total-gain" class="text-3xl font-bold text-slate-900">...</h2>
+                    </div>
+                    <div class="p-2 bg-slate-100 rounded-lg">
+                        <i data-lucide="bar-chart-2" class="h-6 w-6 text-slate-600"></i>
+                    </div>
+                </div>
+                <div id="gain-badge" class="mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600">
+                    <span id="gain-percent">0%</span>
+                </div>
+            </div>
+
+            <!-- Cash (Statisch voorbeeld) -->
+            <div class="glass-card p-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium mb-1">Beschikbare Cash</p>
+                        <h2 class="text-3xl font-bold text-slate-900">€ 2.450,00</h2>
+                    </div>
+                    <div class="p-2 bg-emerald-50 rounded-lg">
+                        <i data-lucide="piggy-bank" class="h-6 w-6 text-emerald-600"></i>
+                    </div>
+                </div>
+                <p class="mt-4 text-slate-400 text-xs">Klaar om te investeren</p>
+            </div>
+        </div>
+
+        <!-- 2. GRAFIEK & TABEL SECTIE -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- GRAFIEK (Links) -->
+            <div class="glass-card p-6 flex flex-col lg:col-span-1">
+                <h3 class="font-bold text-slate-900 mb-6 flex items-center gap-2">
+                    <i data-lucide="pie-chart" class="h-5 w-5 text-slate-400"></i>
+                    Sector Allocatie
+                </h3>
+                <div class="flex-grow flex items-center justify-center relative h-64 w-full">
+                    <canvas id="sectorChart"></canvas>
+                </div>
+                <div class="mt-4 text-center text-xs text-slate-400">
+                    Verdeling van portefeuillewaarde
+                </div>
+            </div>
+
+            <!-- TABEL (Rechts) -->
+            <div class="glass-card overflow-hidden lg:col-span-2 flex flex-col">
+                <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="list" class="h-5 w-5 text-slate-400"></i>
+                        Huidige Posities
+                    </h3>
+                </div>
+                <div class="overflow-x-auto flex-grow">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs">
+                            <tr>
+                                <th class="px-6 py-4">Ticker</th>
+                                <th class="px-6 py-4">Sector</th>
+                                <th class="px-6 py-4 text-right">Aantal</th>
+                                <th class="px-6 py-4 text-right">Koers</th>
+                                <th class="px-6 py-4 text-right">Waarde</th>
+                                <th class="px-6 py-4 text-right">Winst</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portfolio-table-body" class="divide-y divide-slate-100 bg-white">
+                            <!-- JS vult dit -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+        const eur = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
+
+        const SUPABASE_URL = "{{ supabase_url }}";
+        const SUPABASE_KEY = "{{ supabase_key }}";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function fetchPortfolio() {
+            try {
+                // LET OP: Hoofdletter P bij Portefeuille
+                const { data, error } = await supabase.from('Portefeuille').select('*');
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    document.getElementById('portfolio-table-body').innerHTML = '<tr><td colspan="6" class="p-6 text-center text-slate-400">Geen aandelen gevonden in portefeuille.</td></tr>';
+                    document.getElementById('total-value').innerText = "€ 0,00";
+                    return;
+                }
+
+                renderDashboard(data);
+            } catch (err) {
+                console.error("Error:", err);
+                document.getElementById('error-text').innerText = err.message;
+                document.getElementById('error-message').classList.remove('hidden');
+            }
+        }
+
+        function renderDashboard(portfolio) {
+            let totalVal = 0;
+            let totalCost = 0;
+            let sectorTotals = {};
+
+            const tbody = document.getElementById('portfolio-table-body');
+            tbody.innerHTML = '';
+
+            portfolio.forEach(item => {
+                const qty = item.quantity || 0;
+                const price = item.current_price || 0;
+                const avg = item.avg_price || 0;
+                const val = qty * price;
+                const cost = qty * avg;
+                const gain = val - cost;
+                
+                const sectorName = item.sector ? item.sector : "Overig";
+                
+                if (sectorTotals[sectorName]) {
+                    sectorTotals[sectorName] += val;
+                } else {
+                    sectorTotals[sectorName] = val;
+                }
+
+                totalVal += val;
+                totalCost += cost;
+
+                const row = `
+                    <tr class="hover:bg-blue-50/50 transition-colors">
+                        <td class="px-6 py-4 font-bold text-slate-900">
+                            ${item.ticker}
+                            <div class="text-xs text-slate-400 font-normal">${item.name || ''}</div>
+                        </td>
+                        <td class="px-6 py-4 text-slate-600">
+                            <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-medium">
+                                ${sectorName}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
+                        <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>
+                        <td class="px-6 py-4 text-right">
+                            <div class="${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold">
+                                ${eur.format(gain)}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            const totalGain = totalVal - totalCost;
+            const gainPct = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
+
+            document.getElementById('total-value').innerText = eur.format(totalVal);
+            document.getElementById('total-gain').innerText = eur.format(totalGain);
+            document.getElementById('position-count').innerText = portfolio.length;
+            document.getElementById('gain-percent').innerText = (totalGain >= 0 ? '+' : '') + gainPct.toFixed(2) + '%';
+
+            const gainEl = document.getElementById('total-gain');
+            const badgeEl = document.getElementById('gain-badge');
+            
+            if (totalGain >= 0) {
+                gainEl.className = "text-3xl font-bold text-emerald-600";
+                badgeEl.className = "mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-700";
+            } else {
+                gainEl.className = "text-3xl font-bold text-rose-600";
+                badgeEl.className = "mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-rose-100 text-rose-700";
+            }
+
+            updateChart(sectorTotals);
+        }
+
+        let myChart = null;
+
+        function updateChart(dataObj) {
+            const ctx = document.getElementById('sectorChart').getContext('2d');
+            
+            if (myChart) myChart.destroy();
+
+            const labels = Object.keys(dataObj);
+            const dataValues = Object.values(dataObj);
+
+            const colors = [
+                '#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'
+            ];
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataValues,
+                        backgroundColor: colors,
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 20, boxWidth: 8 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed !== null) label += new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' }).format(context.parsed);
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '75%'
+                }
+            });
+        }
+
+        fetchPortfolio();
+    </script>
+</body>
+</html>

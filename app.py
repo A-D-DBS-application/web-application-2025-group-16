@@ -8,6 +8,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 logging.basicConfig(level=logging.INFO)
 
+# --- SUPABASE CONFIGURATIE ---
+# Vul hier jouw gegevens in, deze geven we door aan de HTML
+SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
+
 @app.route("/health")
 def health():
     return {"status": "ok"}
@@ -20,7 +25,18 @@ def index():
 def home():
     if "user_id" not in session:
         return redirect(url_for("login"))
-    return render_template("home.html")  # simple HOME page
+    return render_template("home.html")
+
+# --- NIEUWE ROUTE: PORTFOLIO ---
+@app.route("/portfolio")
+def portfolio():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # We geven de URL en KEY mee aan de template, zodat javascript ze kan gebruiken
+    return render_template("dashboard.html", 
+                         supabase_url=SUPABASE_URL, 
+                         supabase_key=SUPABASE_ANON_KEY)
 
 @app.route("/leden")
 def leden():
@@ -75,7 +91,7 @@ def register():
 @app.errorhandler(Exception)
 def handle_any_exception(e):
     if isinstance(e, HTTPException):
-        return e  # let Flask serve 404/other HTTP errors as-is
+        return e
     logging.error("Unhandled exception: %s", e)
     traceback.print_exc()
     return render_template("error.html", error=str(e)), 500
