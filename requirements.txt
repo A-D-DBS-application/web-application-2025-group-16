@@ -5,5 +5,5 @@ Flask-Migrate
 psycopg2-binary
 python-dotenv 
 supabase
-
-
+requests
+yfinance

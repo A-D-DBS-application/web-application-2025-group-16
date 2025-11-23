@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ group.name if group else 'Groep' }} - Groep</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-10">
+    <div class="max-w-5xl mx-auto space-y-6">
+        {% if error %}
+        <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl px-4 py-3 text-sm">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        {% if group %}
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <p class="text-sm uppercase tracking-wide text-slate-400 font-semibold">Groepsdashboard</p>
+                <h1 class="text-3xl font-bold text-slate-900">{{ group.name }}</h1>
+                <p class="text-slate-500">Gemaakt op {{ group.created_at or 'onbekende datum' }}</p>
+            </div>
+            <div class="flex flex-wrap gap-3 justify-end">
+                <a href="/portfolio" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50">
+                    <i data-lucide="pie-chart" class="h-5 w-5"></i>
+                    Portefeuille
+                </a>
+                <a href="/home" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100">
+                    <i data-lucide="home" class="h-5 w-5"></i>
+                    Home
+                </a>
+                <a href="/logout" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50">
+                    <i data-lucide="log-out" class="h-5 w-5"></i>
+                    Uitloggen
+                </a>
+            </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-3">
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-3">
+                <p class="text-sm text-slate-500">Leden</p>
+                <p class="text-3xl font-bold text-slate-900">{{ group.member_total }}</p>
+                {% if is_owner %}
+                <p class="text-xs text-emerald-600 font-semibold">Je bent eigenaar van deze groep</p>
+                {% endif %}
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-3">
+                <p class="text-sm text-slate-500">Uitnodigingscode</p>
+                <p class="text-2xl font-mono tracking-widest">{{ group.code }}</p>
+                <p class="text-xs text-slate-400">Deel deze code met toekomstige leden.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-3">
+                <p class="text-sm text-slate-500">Beschrijving</p>
+                <p class="text-slate-700">{{ group.description }}</p>
+            </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="users" class="h-5 w-5 text-blue-500"></i>
+                    Ledenlijst
+                </h2>
+                <span class="text-sm text-slate-400">Laatste update: {{ group.created_at or 'onbekend' }}</span>
+            </div>
+            <div class="divide-y divide-slate-100">
+                {% if members %}
+                    {% for member in members %}
+                    <div class="px-6 py-4 flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold text-slate-900">{{ member.volledige_naam }}</p>
+                            <p class="text-sm text-slate-500">{{ member.email }}</p>
+                        </div>
+                        {% if member.role == 'host' or member.ledenid == group.owner_id %}
+                        <span class="text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">Host</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="px-6 py-10 text-center text-slate-400 text-sm">Nog geen leden gevonden.</div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4">
+            <p class="text-lg font-semibold text-slate-900">Geen groep gevonden</p>
+            <p class="text-slate-500">Je hoort momenteel niet bij een groep. Maak er eentje aan of sluit je aan met een code.</p>
+            <div class="flex flex-wrap justify-center gap-3">
+                <a href="/groups/create" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold">Nieuwe groep</a>
+                <a href="/groups/join" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700">Aansluiten</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Groep aanmaken - InvestClub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 shadow-xl rounded-2xl w-full max-w-2xl p-8 space-y-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm uppercase tracking-wide text-slate-400 font-semibold">Nieuwe groep</p>
+                <h1 class="text-3xl font-bold text-slate-900">Groep aanmaken</h1>
+                <p class="text-slate-500">Deel de code met je vrienden om samen te beleggen.</p>
+            </div>
+            <a href="/home" class="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-blue-600">
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
+                Terug naar home
+            </a>
+        </div>
+
+        {% if error %}
+        <div class="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-4 py-3 text-sm">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" class="space-y-6">
+            <div>
+                <label for="name" class="block text-sm font-semibold text-slate-700">Groepsnaam</label>
+                <input id="name" name="name" type="text" required value="{{ name_value }}" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="bv. UGent Traders">
+            </div>
+
+            <div>
+                <label for="description" class="block text-sm font-semibold text-slate-700">Beschrijving <span class="text-slate-400 font-normal">(optioneel)</span></label>
+                <textarea id="description" name="description" rows="3" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Waar focust jullie groep op?">{{ description_value }}</textarea>
+            </div>
+
+            <div>
+                <label for="code" class="block text-sm font-semibold text-slate-700">Uitnodigingscode</label>
+                <p class="text-xs text-slate-500">Gebruik je eigen code of laat het veld leeg om automatisch een veilige code te ontvangen.</p>
+                <input id="code" name="code" type="text" value="{{ code_value }}" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 uppercase tracking-widest" placeholder="PLN4X7">
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
+                <button type="submit" class="flex-1 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-3 shadow">
+                    <i data-lucide="sparkles" class="h-5 w-5"></i>
+                    Maak groep
+                </button>
+                <a href="/groups/join" class="text-sm text-slate-500 hover:text-blue-600">Heb je al een code? Sluit je aan &rarr;</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
