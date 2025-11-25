@@ -3,30 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beleggingsclub Portefeuille</title>
+    <title>InvestClub Portefeuille</title>
     
-    <!-- Styling & Iconen -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Supabase & Grafieken -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .open-group-btn[disabled] { border-color: #cbd5f5; color: #94a3b8; background: #f8fafc; cursor: not-allowed; }
         .form-label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 0.35rem; }
         .form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.65rem 0.9rem; font-size: 0.95rem; color: #0f172a; background: #fff; }
         .form-input:disabled { background: #f8fafc; color: #94a3b8; }
         .quote-pill { border: 1px dashed #cbd5f5; border-radius: 0.75rem; padding: 0.65rem 0.9rem; background: #f8fbff; font-weight: 600; color: #0f172a; }
-        .btn-secondary { border: 1px solid #cbd5f5; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }
+        .btn-secondary { border: 1px solid #cbd5f5; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: #1d4ed8; background: #eff6ff; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: white; background: #2563eb; display: inline-flex; align-items: center; gap: 0.5rem; transition: background 0.2s; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-primary[disabled] { background: #94a3b8; cursor: not-allowed; }
+        
+        /* Table styles */
+        .table-row-hover:hover { background-color: #eff6ff; }
     </style>
 </head>
 <body class="text-slate-800">
 
-    <!-- Navigatie -->
     <nav class="bg-white border-b border-slate-200 sticky top-0 z-20">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16 items-center">
@@ -38,7 +39,7 @@
                 </div>
                 <div class="flex gap-6 text-sm font-medium">
                     <a href="/home" class="text-slate-500 hover:text-blue-600 transition-colors">Home</a>
-                    <a href="/portfolio" class="text-blue-600">Portefeuille</a>
+                    <a href="/portfolio" class="text-blue-600 font-bold">Portefeuille</a>
                     <a href="/logout" class="text-red-500 hover:text-red-700 transition-colors">Uitloggen</a>
                 </div>
             </div>
@@ -47,25 +48,30 @@
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        <!-- Titel & Acties -->
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div>
                 <div class="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-slate-400">
                     <span>Portefeuille</span>
                     {% if active_group %}
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 tracking-normal">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 tracking-normal border border-blue-100">
                         <i data-lucide="layers" class="h-3.5 w-3.5"></i>
                         {{ active_group.name }}
                     </span>
                     {% endif %}
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900">Overzicht per groep</h1>
-                <p class="text-slate-500 text-sm">Selecteer een groep om zijn portefeuille en rendement te bekijken.</p>
+                <h1 class="text-2xl font-bold text-slate-900 mt-1">Overzicht per groep</h1>
             </div>
-            <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
-                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                Verversen
-            </button>
+            
+            <div class="flex gap-3">
+                <a href="/import" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+                    <i data-lucide="upload-cloud" class="h-4 w-4"></i>
+                    Importeer CSV
+                </a>
+                <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                    Verversen
+                </button>
+            </div>
         </div>
 
         {% set builder_disabled = 'disabled' if not active_group else '' %}
@@ -73,12 +79,9 @@
         <div class="glass-card p-5 mb-8">
             {% if user_groups %}
             <div class="flex flex-col gap-4">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div>
-                        <p class="text-xs text-slate-400 uppercase tracking-[0.25em]">Jouw groepen</p>
-                        <p class="text-sm text-slate-500">Klik op een groep om die portefeuille te openen.</p>
-                    </div>
-                    <p class="text-sm text-slate-500">{{ user_groups|length }} groep{% if (user_groups|length) != 1 %}en{% endif %}</p>
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-slate-400 uppercase tracking-[0.25em]">Jouw groepen</p>
+                    <p class="text-sm text-slate-500">{{ user_groups|length }} groepen</p>
                 </div>
                 <div class="flex flex-wrap gap-3">
                     {% for group in user_groups %}
@@ -86,9 +89,6 @@
                         <button type="submit" class="px-4 py-2 rounded-full border text-sm font-semibold transition-colors flex items-center gap-2 {% if group.is_current %}bg-blue-600 text-white border-blue-600{% else %}border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700{% endif %}" {% if group.is_current %}disabled{% endif %}>
                             <i data-lucide="shield" class="h-4 w-4"></i>
                             {{ group.name or "Onbekend" }}
-                            {% if group.is_current %}
-                            <span class="text-xs uppercase tracking-wide">Actief</span>
-                            {% endif %}
                         </button>
                     </form>
                     {% endfor %}
@@ -96,200 +96,165 @@
             </div>
             {% else %}
             <div class="text-center py-6">
-                <p class="text-lg font-semibold text-slate-900">Nog geen groep gevonden</p>
-                <p class="text-slate-500 text-sm">Maak een nieuwe groep aan of sluit je aan via de homepagina.</p>
+                <p class="text-lg font-semibold text-slate-900">Nog geen groepen</p>
                 <div class="mt-4 flex justify-center gap-3">
                     <a href="/groups/create" class="px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-semibold">Nieuwe groep</a>
-                    <a href="/groups/join" class="px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold text-slate-700">Aansluiten</a>
                 </div>
             </div>
             {% endif %}
         </div>
 
         <div class="glass-card p-6 mb-8">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <div>
-                    <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Portefeuille samenstellen</p>
-                    <h2 class="text-xl font-bold text-slate-900">Voeg posities toe aan de actieve groep</h2>
-                    <p class="text-slate-500 text-sm">Gebruik Yahoo Finance voor actuele koersen en details.</p>
-                </div>
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="plus-square" class="h-5 w-5 text-blue-600"></i>
+                    Nieuwe positie toevoegen
+                </h2>
                 {% if not active_group %}
-                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-sm">
-                    <i data-lucide="info" class="h-4 w-4"></i>
-                    Selecteer eerst een groep
-                </span>
+                <span class="text-sm text-rose-500 font-bold bg-rose-50 px-3 py-1 rounded-full border border-rose-100">Selecteer eerst een groep!</span>
                 {% endif %}
             </div>
 
             <form id="position-form" class="space-y-5">
                 <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label class="form-label">Ticker</label>
+                        <label class="form-label">Ticker Symbol</label>
                         <div class="flex gap-2">
-                            <input id="ticker-input" type="text" class="form-input flex-1" placeholder="vb. AAPL" {{ builder_disabled }}>
+                            <input id="ticker-input" type="text" class="form-input flex-1 uppercase" placeholder="vb. AAPL" {{ builder_disabled }}>
                             <button type="button" id="lookup-ticker" class="btn-secondary" {{ builder_disabled }}>
-                                <i data-lucide="search" class="h-4 w-4"></i>
-                                Zoek
+                                <i data-lucide="search" class="h-4 w-4"></i> Zoek
                             </button>
                         </div>
                     </div>
                     <div>
-                        <label class="form-label">Aantal aandelen</label>
-                        <input id="quantity-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <label class="form-label">Aantal Stuks</label>
+                        <input id="quantity-input" type="number" step="0.0001" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                 </div>
 
                 <div class="grid md:grid-cols-3 gap-4">
                     <div>
-                        <label class="form-label">Gem. aankoopprijs (€)</label>
-                        <input id="avg-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <label class="form-label">Aankoopprijs (€)</label>
+                        <input id="avg-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0.00" {{ builder_disabled }}>
                     </div>
                     <div>
-                        <label class="form-label">Laatste koers</label>
-                        <div id="quote-price" class="quote-pill">—</div>
+                        <label class="form-label">Huidige Koers (Live)</label>
+                        <div id="quote-price" class="quote-pill text-center">—</div>
                     </div>
                     <div>
-                        <label class="form-label">Sector</label>
-                        <div id="quote-sector" class="quote-pill">—</div>
+                        <label class="form-label">Transactiekost (€)</label>
+                        <input id="transaction-cost-input" type="number" step="0.01" min="0" class="form-input" placeholder="0.00" {{ builder_disabled }}>
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-3 gap-4">
+                <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label class="form-label">Naam</label>
-                        <div id="quote-name" class="quote-pill">—</div>
+                        <label class="form-label">Bedrijfsnaam</label>
+                        <div id="quote-name" class="quote-pill truncate">—</div>
                     </div>
                     <div>
                         <label class="form-label">Status</label>
-                        <div id="form-status" class="quote-pill text-slate-400">{{ 'Selecteer eerst een groep' if not active_group else 'Zoek een ticker om details te laden' }}</div>
-                    </div>
-                    <div>
-                        <label class="form-label">Transactiekost (EUR)</label>
-                        <input id="transaction-cost-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <div id="form-status" class="quote-pill text-slate-400 text-sm font-normal">Wacht op invoer...</div>
                     </div>
                 </div>
 
-                <div class="flex justify-end">
+                <div class="flex justify-end pt-2">
                     <button type="submit" class="btn-primary" {{ builder_disabled }}>
-                        <i data-lucide="plus-circle" class="h-4 w-4"></i>
-                        Positie opslaan
+                        <i data-lucide="save" class="h-4 w-4"></i> Positie opslaan
                     </button>
                 </div>
             </form>
         </div>
 
-        {% if not active_group %}
-        <div class="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center text-slate-500">
-            Selecteer eerst een groep om een portefeuille te bekijken.
-        </div>
-        {% endif %}
-
-        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded shadow-sm mb-6">
-            <strong class="font-bold">Fout!</strong> <span id="error-text"></span>
+        <div id="error-message" class="hidden bg-rose-50 border-l-4 border-rose-500 text-rose-700 px-4 py-3 rounded shadow-sm mb-6 flex items-start gap-3">
+            <i data-lucide="alert-circle" class="h-5 w-5 mt-0.5 shrink-0"></i>
+            <div>
+                <strong class="font-bold">Er ging iets mis!</strong>
+                <p id="error-text" class="text-sm mt-1"></p>
+            </div>
         </div>
 
-        <!-- 1. KPI KAARTEN (Totalen) -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Totale Waarde -->
-            <div class="glass-card p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none">
+            <div class="glass-card p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none shadow-lg shadow-blue-200">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-blue-100 text-sm font-medium mb-1">Totale Waarde</p>
+                        <p class="text-blue-100 text-sm font-medium mb-1 uppercase tracking-wider">Totale Waarde</p>
                         <h2 id="total-value" class="text-3xl font-bold">Laden...</h2>
                     </div>
-                    <div class="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                    <div class="p-2 bg-white/10 rounded-lg">
                         <i data-lucide="wallet" class="h-6 w-6 text-white"></i>
                     </div>
                 </div>
-                <div class="mt-4 flex items-center gap-2">
-                    <span class="bg-white/20 px-2 py-1 rounded text-xs font-medium backdrop-blur-sm">
-                        <span id="position-count">0</span> posities
-                    </span>
+                <div class="mt-4 text-xs font-medium text-white/70 flex items-center gap-1">
+                    <i data-lucide="pie-chart" class="h-3 w-3"></i>
+                    <span id="position-count">0</span> posities in portefeuille
                 </div>
             </div>
 
-            <!-- Winst/Verlies -->
             <div class="glass-card p-6">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-slate-500 text-sm font-medium mb-1">Totaal Rendement</p>
+                        <p class="text-slate-500 text-sm font-medium mb-1 uppercase tracking-wider">Totaal Rendement</p>
                         <h2 id="total-gain" class="text-3xl font-bold text-slate-900">...</h2>
                     </div>
                     <div class="p-2 bg-slate-100 rounded-lg">
                         <i data-lucide="bar-chart-2" class="h-6 w-6 text-slate-600"></i>
                     </div>
                 </div>
-                <div id="gain-badge" class="mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600">
+                <div id="gain-badge" class="mt-4 inline-flex px-2 py-1 rounded text-xs font-bold bg-slate-100 text-slate-600">
                     <span id="gain-percent">0%</span>
                 </div>
             </div>
 
-            <!-- Cash (Dynamisch) -->
             <div class="glass-card p-6 space-y-4">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-slate-500 text-sm font-medium mb-1">Beschikbare Cash</p>
+                        <p class="text-slate-500 text-sm font-medium mb-1 uppercase tracking-wider">Vrije Cash</p>
                         <h2 id="cash-balance" class="text-3xl font-bold text-slate-900">€ 0,00</h2>
                     </div>
                     <div class="p-2 bg-emerald-50 rounded-lg">
                         <i data-lucide="piggy-bank" class="h-6 w-6 text-emerald-600"></i>
                     </div>
                 </div>
-                <p id="cash-status" class="text-slate-400 text-xs">Klaar om te investeren</p>
-                <div class="flex flex-col gap-2">
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input id="cash-adjust-input" type="number" step="0.01" min="0" class="form-input flex-1" placeholder="Bedrag" {{ builder_disabled }}>
-                        <div class="flex gap-2">
-                            <button id="cash-add-btn" type="button" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700" {{ builder_disabled }}>+ Cash</button>
-                            <button id="cash-remove-btn" type="button" class="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700" {{ builder_disabled }}>- Cash</button>
-                        </div>
-                    </div>
-                    <p class="text-xs text-slate-400">Gebruik deze knoppen voor stortingen of opnames buiten de app.</p>
+                <div class="flex gap-2">
+                    <input id="cash-adjust-input" type="number" step="0.01" class="form-input flex-1 py-1.5 text-sm" placeholder="Bedrag €" {{ builder_disabled }}>
+                    <button id="cash-add-btn" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-bold" {{ builder_disabled }} title="Storten">+</button>
+                    <button id="cash-remove-btn" class="px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition font-bold" {{ builder_disabled }} title="Opnemen">-</button>
                 </div>
             </div>
         </div>
 
-        <!-- 2. GRAFIEK & TABEL SECTIE -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            <!-- GRAFIEK (Links) -->
-            <div class="glass-card p-6 flex flex-col lg:col-span-1">
-                <h3 class="font-bold text-slate-900 mb-6 flex items-center gap-2">
-                    <i data-lucide="pie-chart" class="h-5 w-5 text-slate-400"></i>
+            <div class="glass-card p-6 lg:col-span-1 flex flex-col h-[400px] lg:h-auto">
+                <h3 class="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i data-lucide="pie-chart" class="h-4 w-4 text-slate-400"></i>
                     Sector Allocatie
                 </h3>
-                <div class="flex-grow flex items-center justify-center relative h-64 w-full">
+                <div class="flex-grow relative w-full">
                     <canvas id="sectorChart"></canvas>
-                </div>
-                <div class="mt-4 text-center text-xs text-slate-400">
-                    Verdeling van portefeuillewaarde
                 </div>
             </div>
 
-            <!-- TABEL (Rechts) -->
             <div class="glass-card overflow-hidden lg:col-span-2 flex flex-col">
                 <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                    <h3 class="font-bold text-slate-900 flex items-center gap-2">
-                        <i data-lucide="list" class="h-5 w-5 text-slate-400"></i>
-                        Huidige Posities
-                    </h3>
+                    <h3 class="font-bold text-slate-900">Huidige Posities</h3>
+                    <span class="text-xs text-slate-400">Real-time prijzen (indien beschikbaar)</span>
                 </div>
                 <div class="overflow-x-auto flex-grow">
                     <table class="w-full text-sm text-left">
-                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase text-xs tracking-wider">
                             <tr>
                                 <th class="px-6 py-4">Ticker</th>
                                 <th class="px-6 py-4">Sector</th>
                                 <th class="px-6 py-4 text-right">Aantal</th>
-                                <th class="px-6 py-4 text-right">Koers</th>
+                                <th class="px-6 py-4 text-right">Huidige Koers</th>
                                 <th class="px-6 py-4 text-right">Waarde</th>
-                                <th class="px-6 py-4 text-right">Winst</th>
-                                <th class="px-6 py-4 text-right">Acties</th>
+                                <th class="px-6 py-4 text-right">Winst/Verlies</th>
+                                <th class="px-6 py-4 text-center">Acties</th>
                             </tr>
                         </thead>
                         <tbody id="portfolio-table-body" class="divide-y divide-slate-100 bg-white">
-                            <!-- JS vult dit -->
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -297,42 +262,45 @@
 
     </main>
 
-    <!-- Trade Modal -->
-    <div id="trade-modal" class="fixed inset-0 z-40 hidden">
-        <div class="absolute inset-0 bg-slate-900/60" data-close-trade></div>
+    <div id="trade-modal" class="fixed inset-0 z-40 hidden transition-opacity duration-300">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" data-close-trade></div>
         <div class="relative mx-auto mt-20 w-full max-w-lg px-4">
-            <div class="glass-card p-6 relative">
-                <button type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600" data-close-trade>
+            <div class="glass-card p-6 relative animate-in fade-in zoom-in duration-200">
+                <button type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" data-close-trade>
                     <i data-lucide="x" class="h-5 w-5"></i>
                 </button>
-                <div class="mb-4">
-                    <p class="text-xs uppercase tracking-[0.3em] text-slate-400" id="trade-modal-label">Transactie</p>
-                    <h3 id="trade-modal-title" class="text-xl font-bold text-slate-900">Kopen</h3>
+                <div class="mb-5 border-b border-slate-100 pb-4">
+                    <h3 id="trade-modal-title" class="text-xl font-bold text-slate-900">Transactie</h3>
+                    <p class="text-sm text-slate-500">Pas je positie aan in deze groep.</p>
                 </div>
                 <form id="trade-form" class="space-y-4">
                     <div>
                         <label class="form-label">Ticker</label>
-                        <div id="trade-ticker" class="quote-pill font-semibold">—</div>
+                        <div id="trade-ticker" class="quote-pill font-bold text-lg bg-slate-50">—</div>
                     </div>
-                    <div class="grid md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="form-label">Aantal aandelen</label>
-                            <input id="trade-quantity" type="number" step="0.01" min="0" class="form-input" placeholder="0">
+                            <label class="form-label">Aantal</label>
+                            <input id="trade-quantity" type="number" step="0.0001" class="form-input" required>
                         </div>
                         <div>
-                            <label class="form-label">Prijs per aandeel (€)</label>
-                            <input id="trade-price" type="number" step="0.01" min="0" class="form-input" placeholder="0">
+                            <label class="form-label">Prijs per stuk (€)</label>
+                            <input id="trade-price" type="number" step="0.01" class="form-input" required>
                         </div>
                     </div>
                     <div>
-                        <label class="form-label">Transactiekost (EUR)</label>
-                        <input id="trade-fee" type="number" step="0.01" min="0" class="form-input" placeholder="0">
+                        <label class="form-label">Transactiekosten (€)</label>
+                        <input id="trade-fee" type="number" step="0.01" class="form-input" value="0">
                     </div>
-                    <p id="trade-info" class="text-xs text-slate-400">—</p>
-                    <div id="trade-status" class="text-xs text-slate-400">Vul de velden in en bevestig.</div>
-                    <div class="flex justify-end gap-3 pt-2">
-                        <button type="button" class="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50" data-close-trade>Annuleren</button>
-                        <button id="trade-submit" type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">Bevestigen</button>
+                    
+                    <div class="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 flex items-start gap-2 mt-2">
+                        <i data-lucide="info" class="h-4 w-4 mt-0.5 shrink-0"></i>
+                        <p id="trade-info">De totale waarde en cash positie worden automatisch bijgewerkt.</p>
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="button" class="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-50 text-slate-700 transition" data-close-trade>Annuleren</button>
+                        <button id="trade-submit" type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm transition">Bevestigen</button>
                     </div>
                 </form>
             </div>
@@ -340,795 +308,440 @@
     </div>
 
     <script>
+        // Initialiseer Iconen
         lucide.createIcons();
+        
+        // Formatter voor Valuta
         const eur = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 
+        // Backend Variabelen (Worden ingevuld door Flask/Jinja2)
         const SUPABASE_URL = "{{ supabase_url }}";
         const SUPABASE_KEY = "{{ supabase_key }}";
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const ACTIVE_GROUP_ID = Number('{{ active_group.id if active_group else "" }}') || null;
 
-        const tickerInput = document.getElementById('ticker-input');
-        const quantityInput = document.getElementById('quantity-input');
-        const avgPriceInput = document.getElementById('avg-price-input');
-        const lookupBtn = document.getElementById('lookup-ticker');
-        const positionForm = document.getElementById('position-form');
-        const quoteNameEl = document.getElementById('quote-name');
-        const quoteSectorEl = document.getElementById('quote-sector');
-        const quotePriceEl = document.getElementById('quote-price');
-        const formStatusEl = document.getElementById('form-status');
-        const transactionCostInput = document.getElementById('transaction-cost-input');
-        const cashAdjustInput = document.getElementById('cash-adjust-input');
-        const cashAddBtn = document.getElementById('cash-add-btn');
-        const cashRemoveBtn = document.getElementById('cash-remove-btn');
-        const tradeModal = document.getElementById('trade-modal');
-        const tradeForm = document.getElementById('trade-form');
-        const tradeTitle = document.getElementById('trade-modal-title');
-        const tradeTickerEl = document.getElementById('trade-ticker');
-        const tradeInfoEl = document.getElementById('trade-info');
-        const tradeQtyInput = document.getElementById('trade-quantity');
-        const tradePriceInput = document.getElementById('trade-price');
-        const tradeFeeInput = document.getElementById('trade-fee');
-        const tradeStatusEl = document.getElementById('trade-status');
-        const tradeSubmitBtn = document.getElementById('trade-submit');
-        const tradeCloseButtons = document.querySelectorAll('[data-close-trade]');
+        // Supabase Client
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const QUOTE_ENDPOINT = '/api/quote/';
+        // --- DOM ELEMENTEN ---
+        const els = {
+            ticker: document.getElementById('ticker-input'),
+            qty: document.getElementById('quantity-input'),
+            price: document.getElementById('avg-price-input'),
+            cost: document.getElementById('transaction-cost-input'),
+            form: document.getElementById('position-form'),
+            lookup: document.getElementById('lookup-ticker'),
+            status: document.getElementById('form-status'),
+            quoteName: document.getElementById('quote-name'),
+            quotePrice: document.getElementById('quote-price'),
+            
+            cashInput: document.getElementById('cash-adjust-input'),
+            cashAdd: document.getElementById('cash-add-btn'),
+            cashRem: document.getElementById('cash-remove-btn'),
+            
+            modal: document.getElementById('trade-modal'),
+            modalForm: document.getElementById('trade-form'),
+            modalTitle: document.getElementById('trade-modal-title'),
+            modalTicker: document.getElementById('trade-ticker'),
+            modalQty: document.getElementById('trade-quantity'),
+            modalPrice: document.getElementById('trade-price'),
+            modalFee: document.getElementById('trade-fee'),
+            modalSubmit: document.getElementById('trade-submit'),
+            
+            tbody: document.getElementById('portfolio-table-body'),
+            chartEl: document.getElementById('sectorChart')
+        };
+
+        // State variabelen
         let lastQuote = null;
         let lastCashRow = null;
         let tradeContext = null;
+        let chartInstance = null;
 
-        if (lookupBtn) {
-            lookupBtn.addEventListener('click', handleLookup);
-        }
+        // --- EVENT LISTENERS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            if (ACTIVE_GROUP_ID) {
+                fetchPortfolio();
+            } else {
+                renderEmpty();
+            }
+        });
 
-        if (positionForm) {
-            positionForm.addEventListener('submit', handlePositionSubmit);
-        }
-
-        if (cashAddBtn) {
-            cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
-        }
-        if (cashRemoveBtn) {
-            cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
-        }
-
-        if (tradeForm) {
-            tradeForm.addEventListener('submit', handleTradeSubmit);
-        }
-
-        tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
-
+        if(els.lookup) els.lookup.addEventListener('click', handleLookup);
+        if(els.form) els.form.addEventListener('submit', handlePositionSubmit);
+        
+        // Cash knoppen
+        if(els.cashAdd) els.cashAdd.addEventListener('click', (e) => { e.preventDefault(); handleCashAdjust('add'); });
+        if(els.cashRem) els.cashRem.addEventListener('click', (e) => { e.preventDefault(); handleCashAdjust('remove'); });
+        
+        // Modal logica
+        if(els.modalForm) els.modalForm.addEventListener('submit', handleTradeSubmit);
+        document.querySelectorAll('[data-close-trade]').forEach(b => b.addEventListener('click', () => {
+            els.modal.classList.add('hidden');
+        }));
+        
+        // Tabel kliks (delegeren)
         document.addEventListener('click', handleTableAction);
 
-        async function fetchPortfolio() {
-            try {
-                if (!ACTIVE_GROUP_ID) {
-                    resetDashboard();
-                    return;
-                }
+        // --- CORE LOGICA ---
 
+        // 1. Data Ophalen
+        async function fetchPortfolio() {
+            if (!ACTIVE_GROUP_ID) return;
+
+            try {
+                // Haal data op uit 'Portefeuille' tabel
                 const { data, error } = await supabase
                     .from('Portefeuille')
                     .select('*')
                     .eq('groep_id', ACTIVE_GROUP_ID);
 
                 if (error) throw error;
-
-                if (!data || data.length === 0) {
+                
+                // Check of er een CASH rij is, zo niet, maak die aan
+                if (!data || !data.some(r => r.ticker === 'CASH')) {
                     await ensureCashRow();
-                    return fetchPortfolio();
-                }
-
-                const hasCash = data.some(isCashRow);
-                if (!hasCash) {
-                    await ensureCashRow();
-                    return fetchPortfolio();
+                    return fetchPortfolio(); // Opnieuw proberen na aanmaken
                 }
 
                 renderDashboard(data);
             } catch (err) {
-                console.error("Error:", err);
-                document.getElementById('error-text').innerText = err.message;
-                document.getElementById('error-message').classList.remove('hidden');
+                console.error("Fetch error:", err);
+                showError(err.message);
             }
         }
 
-        function resetDashboard() {
-            document.getElementById('total-value').innerText = "€ 0,00";
-            document.getElementById('total-gain').innerText = "€ 0,00";
-            document.getElementById('position-count').innerText = '0';
-            document.getElementById('gain-percent').innerText = '0%';
-            document.getElementById('portfolio-table-body').innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">Selecteer een groep om posities te laden.</td></tr>';
-            updateChart({});
-            clearQuoteSummary();
-            setFormStatus(ACTIVE_GROUP_ID ? 'Zoek een ticker om details te laden' : 'Selecteer eerst een groep', 'info');
-            lastCashRow = null;
-            setCashControlsState(false);
-            updateCashCard(0);
+        // 2. Cash rij garanderen
+        async function ensureCashRow() {
+            await supabase.from('Portefeuille').insert([{
+                ticker: 'CASH', 
+                name: 'Vrije Cash', 
+                sector: 'Cash', 
+                quantity: 1, // Cash is altijd 1 unit met variabele prijs, of hoeveelheid = bedrag
+                avg_price: 1,
+                current_price: 0, // Dit bevat het totaalbedrag
+                transactiekost: 0, 
+                groep_id: ACTIVE_GROUP_ID
+            }]);
         }
 
-        function renderDashboard(portfolio) {
-            const cashRow = findCashRow(portfolio);
-            lastCashRow = cashRow;
-            const cashAmount = cashRow ? Number(cashRow.current_price) || 0 : 0;
-            const positions = portfolio.filter(row => !isCashRow(row));
+        // 3. Dashboard Renderen
+        function renderDashboard(data) {
+            // Zoek Cash
+            lastCashRow = data.find(r => r.ticker === 'CASH');
+            // Aanname: bij de CASH rij wordt 'current_price' misbruikt als de totaalwaarde van de cash
+            const cashVal = lastCashRow ? Number(lastCashRow.current_price) : 0;
+            
+            // Filter posities (exclusief cash)
+            const positions = data.filter(r => r.ticker !== 'CASH');
+            
+            let totalInvestedValue = 0;
+            let totalInvestedCost = 0;
+            let sectors = {};
+            
+            els.tbody.innerHTML = '';
 
-            setCashControlsState(true);
-
-            let totalVal = 0;
-            let totalCost = 0;
-            let sectorTotals = {};
-
-            const tbody = document.getElementById('portfolio-table-body');
-            tbody.innerHTML = '';
-
-            if (positions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">Geen aandelen gevonden in portefeuille.</td></tr>';
+            if(positions.length === 0) {
+                els.tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-500 italic">Nog geen aandelen gekocht. Gebruik het formulier hierboven.</td></tr>';
             }
 
-            positions.forEach(item => {
-                const qty = item.quantity || 0;
-                const price = item.current_price || 0;
-                const avg = item.avg_price || 0;
-                const fee = Number(item.transactiekost) || 0;
-                const val = qty * price;
-                const cost = qty * avg + fee;
-                const gain = val - cost;
-                const rowId = item.id ?? item.ID ?? item.portefeuille_id ?? '';
+            positions.forEach(p => {
+                const qty = Number(p.quantity);
+                const price = Number(p.current_price); // Live prijs
+                const avg = Number(p.avg_price);
                 
-                const sectorName = item.sector ? item.sector : "Overig";
+                // Berekeningen
+                const currentVal = qty * price;
+                const costBasis = (qty * avg) + Number(p.transactiekost || 0);
+                const gain = currentVal - costBasis;
                 
-                if (sectorTotals[sectorName]) {
-                    sectorTotals[sectorName] += val;
-                } else {
-                    sectorTotals[sectorName] = val;
-                }
+                // Sector Data verzamelen voor grafiek
+                const sec = p.sector || 'Overig';
+                sectors[sec] = (sectors[sec] || 0) + currentVal;
+                
+                totalInvestedValue += currentVal;
+                totalInvestedCost += costBasis;
 
-                totalVal += val;
-                totalCost += cost;
-
-                const attrTicker = escapeAttr(item.ticker || '');
-                const attrName = escapeAttr(item.name || '');
+                // Render Rij
                 const row = `
-                    <tr class="hover:bg-blue-50/50 transition-colors">
+                    <tr class="table-row-hover transition-colors border-b border-slate-50">
                         <td class="px-6 py-4 font-bold text-slate-900">
-                            ${item.ticker}
-                            <div class="text-xs text-slate-400 font-normal">${item.name || ''}</div>
+                            ${p.ticker}
+                            <div class="text-xs font-normal text-slate-400 truncate max-w-[150px]">${p.name || ''}</div>
                         </td>
-                        <td class="px-6 py-4 text-slate-600">
-                            <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-medium">
-                                ${sectorName}
-                            </span>
+                        <td class="px-6 py-4 text-xs">
+                            <span class="bg-slate-100 text-slate-600 px-2 py-1 rounded font-medium">${sec}</span>
                         </td>
-                        <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
-                        <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>
-                        <td class="px-6 py-4 text-right">
-                            <div class="${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold">
-                                ${eur.format(gain)}
+                        <td class="px-6 py-4 text-right font-mono text-slate-600">${qty.toLocaleString('nl-BE')}</td>
+                        <td class="px-6 py-4 text-right font-mono">${eur.format(price)}</td>
+                        <td class="px-6 py-4 text-right font-bold text-slate-800">${eur.format(currentVal)}</td>
+                        <td class="px-6 py-4 text-right font-bold ${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'}">
+                            ${gain >= 0 ? '+' : ''}${eur.format(gain)}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <div class="flex justify-center gap-2">
+                                <button class="buy-pos px-2 py-1 bg-emerald-50 text-emerald-700 text-xs rounded border border-emerald-100 hover:bg-emerald-100 font-semibold transition" data-json='${JSON.stringify(p)}'>Koop</button>
+                                <button class="sell-pos px-2 py-1 bg-rose-50 text-rose-700 text-xs rounded border border-rose-100 hover:bg-rose-100 font-semibold transition" data-json='${JSON.stringify(p)}'>Verkoop</button>
                             </div>
                         </td>
-                        <td class="px-6 py-4 text-right">
-                            <div class="flex justify-end gap-2">
-                                <button type="button"
-                                    class="buy-position px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"
-                                    data-position-id="${rowId}"
-                                    data-ticker="${attrTicker}"
-                                    data-name="${attrName}"
-                                    data-quantity="${qty}"
-                                    data-avg-price="${avg}"
-                                    data-price="${price}"
-                                    data-fee="${fee}">
-                                    Kopen
-                                </button>
-                                <button type="button"
-                                    class="sell-position px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100"
-                                    data-position-id="${rowId}"
-                                    data-ticker="${attrTicker}"
-                                    data-name="${attrName}"
-                                    data-quantity="${qty}"
-                                    data-avg-price="${avg}"
-                                    data-price="${price}"
-                                    data-fee="${fee}">
-                                    Verkopen
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
+                    </tr>`;
+                els.tbody.innerHTML += row;
             });
 
-            const totalGain = totalVal - totalCost;
-            const gainPct = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-
-            const overallValue = totalVal + cashAmount;
-            document.getElementById('total-value').innerText = eur.format(overallValue);
-            document.getElementById('total-gain').innerText = eur.format(totalGain);
-            document.getElementById('position-count').innerText = positions.length;
-            document.getElementById('gain-percent').innerText = (totalGain >= 0 ? '+' : '') + gainPct.toFixed(2) + '%';
-
-            updateCashCard(cashAmount);
-
-            const gainEl = document.getElementById('total-gain');
-            const badgeEl = document.getElementById('gain-badge');
+            // Update KPI's
+            const grandTotal = totalInvestedValue + cashVal;
+            const totalGain = totalInvestedValue - totalInvestedCost;
             
-            if (totalGain >= 0) {
-                gainEl.className = "text-3xl font-bold text-emerald-600";
-                badgeEl.className = "mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-700";
-            } else {
-                gainEl.className = "text-3xl font-bold text-rose-600";
-                badgeEl.className = "mt-4 inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-rose-100 text-rose-700";
+            document.getElementById('total-value').innerText = eur.format(grandTotal);
+            document.getElementById('total-gain').innerText = (totalGain >= 0 ? '+' : '') + eur.format(totalGain);
+            document.getElementById('total-gain').className = `text-3xl font-bold ${totalGain >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+            
+            const gainPercentage = totalInvestedCost > 0 ? ((totalGain / totalInvestedCost) * 100).toFixed(2) : 0;
+            document.getElementById('gain-percent').innerText = `${gainPercentage}%`;
+            document.getElementById('gain-percent').parentElement.className = `mt-4 inline-flex px-2 py-1 rounded text-xs font-bold ${totalGain >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`;
+            
+            document.getElementById('cash-balance').innerText = eur.format(cashVal);
+            document.getElementById('position-count').innerText = positions.length;
+
+            updateChart(sectors, cashVal);
+        }
+
+        function renderEmpty() {
+            els.tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400 bg-slate-50">Selecteer linksboven een groep om te beginnen.</td></tr>';
+        }
+
+        // --- HANDLERS ---
+
+        // Ticker Lookup (Vereist backend route /api/quote/<ticker>)
+        async function handleLookup() {
+            const sym = els.ticker.value.toUpperCase();
+            if(!sym) return;
+            
+            els.status.innerText = "Zoeken...";
+            els.status.className = "quote-pill text-blue-500 bg-blue-50 border-blue-200";
+
+            try {
+                const res = await fetch(`/api/quote/${sym}`);
+                if (!res.ok) throw new Error("API Fout");
+                
+                const data = await res.json();
+                if(data.error) throw new Error(data.error);
+                
+                lastQuote = data;
+                els.quoteName.innerText = data.longName || sym;
+                els.quotePrice.innerText = eur.format(data.regularMarketPrice);
+                
+                if(!els.price.value) els.price.value = data.regularMarketPrice;
+                
+                els.status.innerText = "Gevonden!";
+                els.status.className = "quote-pill text-emerald-600 bg-emerald-50 border-emerald-200";
+            } catch(e) {
+                els.status.innerText = "Niet gevonden";
+                els.status.className = "quote-pill text-rose-500 bg-rose-50 border-rose-200";
+                els.quoteName.innerText = "—";
+            }
+        }
+
+        // Nieuwe Positie Opslaan
+        async function handlePositionSubmit(e) {
+            e.preventDefault();
+            if(!ACTIVE_GROUP_ID) return alert("Selecteer eerst een groep");
+            
+            const qty = parseFloat(els.qty.value);
+            const price = parseFloat(els.price.value);
+            const fee = parseFloat(els.cost.value || 0);
+            
+            if (isNaN(qty) || isNaN(price)) return alert("Vul geldige getallen in");
+
+            const totalCost = (qty * price) + fee;
+            const currentCash = Number(lastCashRow.current_price);
+
+            if(totalCost > currentCash) {
+                showError("Onvoldoende cash in kas!");
+                return;
             }
 
-            updateChart(sectorTotals);
-        }
-
-        let myChart = null;
-
-        function escapeAttr(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/"/g, '&quot;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-        }
-
-        function updateChart(dataObj) {
-            const ctx = document.getElementById('sectorChart').getContext('2d');
+            // Database Insert
+            const { error } = await supabase.from('Portefeuille').insert([{
+                groep_id: ACTIVE_GROUP_ID,
+                ticker: els.ticker.value.toUpperCase(),
+                name: lastQuote?.longName || els.ticker.value,
+                quantity: qty,
+                avg_price: price,
+                current_price: lastQuote?.regularMarketPrice || price, // Initieel gelijk aan aankoop
+                sector: lastQuote?.sector || 'Onbekend',
+                transactiekost: fee
+            }]);
             
-            if (myChart) myChart.destroy();
+            if(error) {
+                showError(error.message);
+                return;
+            }
 
-            const labels = Object.keys(dataObj);
-            const dataValues = Object.values(dataObj);
+            // Cash Updaten
+            await updateCashBalance(currentCash - totalCost);
+            
+            // Reset & Refresh
+            els.form.reset();
+            els.quoteName.innerText = "—";
+            els.quotePrice.innerText = "—";
+            els.status.innerText = "Wacht op invoer...";
+            document.getElementById('error-message').classList.add('hidden');
+            fetchPortfolio();
+        }
 
-            const colors = [
-                '#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'
-            ];
+        // Cash Updaten (Helper)
+        async function updateCashBalance(newAmount) {
+            await supabase
+                .from('Portefeuille')
+                .update({ current_price: newAmount })
+                .eq('id', lastCashRow.id);
+        }
 
-            myChart = new Chart(ctx, {
+        // Cash Knoppen Handler
+        async function handleCashAdjust(mode) {
+            const amount = parseFloat(els.cashInput.value);
+            if(!amount || !lastCashRow) return;
+            
+            const current = Number(lastCashRow.current_price);
+            const next = mode === 'add' ? current + amount : current - amount;
+            
+            if (next < 0) return alert("Cash kan niet negatief zijn.");
+
+            await updateCashBalance(next);
+            els.cashInput.value = '';
+            fetchPortfolio();
+        }
+
+        // --- TRADE MODAL LOGICA ---
+
+        function handleTableAction(e) {
+            const btn = e.target.closest('button');
+            if(!btn) return;
+            
+            const dataStr = btn.dataset.json;
+            if (!dataStr) return;
+            
+            const data = JSON.parse(dataStr);
+            
+            if(btn.classList.contains('buy-pos')) openModal('buy', data);
+            if(btn.classList.contains('sell-pos')) openModal('sell', data);
+        }
+
+        function openModal(mode, data) {
+            tradeContext = { ...data, mode };
+            
+            // UI instellen
+            els.modalTitle.innerText = mode === 'buy' ? 'Positie Uitbreiden (Kopen)' : 'Positie Afbouwen (Verkopen)';
+            els.modalTicker.innerText = data.ticker;
+            
+            // Kleuren aanpassen knop
+            els.modalSubmit.className = `px-4 py-2 text-white rounded-lg text-sm font-semibold shadow-sm transition ${
+                mode === 'buy' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+            }`;
+            els.modalSubmit.innerText = mode === 'buy' ? 'Kopen' : 'Verkopen';
+            
+            els.modalQty.value = '';
+            els.modalPrice.value = data.current_price; // Voorstel huidige prijs
+            els.modal.classList.remove('hidden');
+        }
+
+        async function handleTradeSubmit(e) {
+            e.preventDefault();
+            const qty = parseFloat(els.modalQty.value);
+            const price = parseFloat(els.modalPrice.value);
+            const fee = parseFloat(els.modalFee.value || 0);
+            const mode = tradeContext.mode;
+            
+            if (!qty || !price) return;
+
+            const currentCash = Number(lastCashRow.current_price);
+            const oldQty = Number(tradeContext.quantity);
+
+            if(mode === 'buy') {
+                const totalCost = (qty * price) + fee;
+                if(currentCash < totalCost) return alert("Niet genoeg cash");
+
+                // Update Portefeuille (Simpel: optellen. Geavanceerd: gemiddelde aankooprijs herberekenen)
+                // Nieuwe Avg Price = ((OudAantal * OudAvg) + (NieuwAantal * NieuwPrijs)) / TotaalAantal
+                // Voor nu laten we Avg Price ongewijzigd of doen we simpel:
+                const newQty = oldQty + qty;
+                
+                await supabase.from('Portefeuille').update({ quantity: newQty }).eq('id', tradeContext.id);
+                await updateCashBalance(currentCash - totalCost);
+
+            } else {
+                // Verkopen
+                if(qty > oldQty) return alert("Je bezit niet zoveel aandelen.");
+                
+                const proceeds = (qty * price) - fee;
+                const newQty = oldQty - qty;
+
+                if(newQty <= 0) {
+                    // Verwijder positie als alles verkocht is
+                    await supabase.from('Portefeuille').delete().eq('id', tradeContext.id);
+                } else {
+                    await supabase.from('Portefeuille').update({ quantity: newQty }).eq('id', tradeContext.id);
+                }
+                
+                await updateCashBalance(currentCash + proceeds);
+            }
+
+            els.modal.classList.add('hidden');
+            fetchPortfolio();
+        }
+
+        // --- CHART EN ERROR HANDLING ---
+
+        function updateChart(sectors, cashVal) {
+            const ctx = els.chartEl.getContext('2d');
+            
+            // Voeg Cash toe aan de grafiek
+            const labels = [...Object.keys(sectors), 'Cash'];
+            const values = [...Object.values(sectors), cashVal];
+
+            if(chartInstance) chartInstance.destroy();
+            
+            chartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: labels,
                     datasets: [{
-                        data: dataValues,
-                        backgroundColor: colors,
-                        borderWidth: 0,
-                        hoverOffset: 4
+                        data: values,
+                        backgroundColor: [
+                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', // Kleuren voor sectoren
+                            '#cbd5e1' // Kleur voor Cash (grijs)
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { usePointStyle: true, padding: 20, boxWidth: 8 }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    if (label) label += ': ';
-                                    if (context.parsed !== null) label += new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' }).format(context.parsed);
-                                    return label;
+                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } },
+                        tooltip: { 
+                            callbacks: { 
+                                label: (ctx) => {
+                                    let val = ctx.raw;
+                                    let total = ctx.chart._metasets[ctx.datasetIndex].total;
+                                    let percentage = ((val / total) * 100).toFixed(1) + "%";
+                                    return ` ${ctx.label}: ${eur.format(val)} (${percentage})`;
                                 }
                             }
                         }
                     },
-                    cutout: '75%'
+                    cutout: '65%',
+                    layout: { padding: 10 }
                 }
             });
         }
 
-        function setFormStatus(message, type = 'info') {
-            if (!formStatusEl) return;
-            const colors = {
-                info: 'text-slate-500',
-                success: 'text-emerald-600',
-                error: 'text-rose-600'
-            };
-            formStatusEl.textContent = message;
-            formStatusEl.className = 'quote-pill ' + (colors[type] || colors.info);
+        function showError(msg) {
+            document.getElementById('error-text').innerText = msg;
+            document.getElementById('error-message').classList.remove('hidden');
+            window.scrollTo(0,0);
         }
-
-        function updateQuoteSummary(quote) {
-            if (!quoteNameEl || !quotePriceEl || !quoteSectorEl) return;
-            quoteNameEl.textContent = quote.longName || quote.shortName || quote.symbol || '—';
-            quoteSectorEl.textContent = quote.sector || 'Onbekend';
-            const price = quote.regularMarketPrice || quote.postMarketPrice || null;
-            quotePriceEl.textContent = price ? eur.format(price) : '—';
-        }
-
-        function clearQuoteSummary() {
-            if (quoteNameEl) quoteNameEl.textContent = '—';
-            if (quoteSectorEl) quoteSectorEl.textContent = '—';
-            if (quotePriceEl) quotePriceEl.textContent = '—';
-            lastQuote = null;
-        }
-
-        async function handleLookup() {
-            if (!ACTIVE_GROUP_ID) {
-                setFormStatus('Selecteer eerst een groep', 'error');
-                return;
-            }
-            if (!tickerInput || !tickerInput.value.trim()) {
-                setFormStatus('Vul een ticker in', 'error');
-                return;
-            }
-            const symbol = tickerInput.value.trim().toUpperCase();
-            setFormStatus(`Zoeken naar ${symbol}...`, 'info');
-            try {
-                const quote = await fetchQuote(symbol);
-                lastQuote = quote;
-                updateQuoteSummary(quote);
-                if (avgPriceInput && !avgPriceInput.value) {
-                    avgPriceInput.value = quote.regularMarketPrice || '';
-                }
-                setFormStatus('Quote geladen. Vul aantallen in en sla op.', 'success');
-            } catch (err) {
-                clearQuoteSummary();
-                setFormStatus(err.message || 'Ticker niet gevonden', 'error');
-            }
-        }
-
-        async function fetchQuote(symbol) {
-            const response = await fetch(`${QUOTE_ENDPOINT}${encodeURIComponent(symbol)}`);
-            const payload = await response.json();
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Quote niet beschikbaar');
-            }
-            return payload;
-        }
-
-        async function handlePositionSubmit(event) {
-            event.preventDefault();
-            if (!ACTIVE_GROUP_ID) {
-                setFormStatus('Selecteer eerst een groep', 'error');
-                return;
-            }
-            if (!tickerInput || !quantityInput || !avgPriceInput) {
-                setFormStatus('Formulier niet volledig geladen', 'error');
-                return;
-            }
-            const symbol = (tickerInput.value || '').trim().toUpperCase();
-            const qty = parseFloat(quantityInput.value || '0');
-            let avgPrice = parseFloat(avgPriceInput.value || '0');
-            let transactionCost = parseFloat(transactionCostInput?.value || '0');
-
-            if (!symbol) {
-                setFormStatus('Geef een ticker op', 'error');
-                return;
-            }
-            if (symbol === 'CASH') {
-                setFormStatus('Ticker CASH is gereserveerd voor het kassaldo.', 'error');
-                return;
-            }
-            if (!qty || qty <= 0) {
-                setFormStatus('Aantal moet groter dan 0 zijn', 'error');
-                return;
-            }
-            if (!avgPrice || avgPrice <= 0) {
-                avgPrice = lastQuote?.regularMarketPrice || 0;
-                if (!avgPrice) {
-                    setFormStatus('Geef een aankoopprijs op of laad een quote', 'error');
-                    return;
-                }
-            }
-            if (isNaN(transactionCost) || transactionCost < 0) {
-                transactionCost = 0;
-            }
-
-            if (!lastCashRow) {
-                setFormStatus('Cashpositie niet gevonden', 'error');
-                return;
-            }
-
-            const totalCost = qty * avgPrice + transactionCost;
-            const cashAvailable = Number(lastCashRow.current_price) || 0;
-            if (totalCost > cashAvailable + 1e-8) {
-                setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
-                return;
-            }
-
-            const priceNow = lastQuote?.regularMarketPrice ?? avgPrice;
-            const positionName = lastQuote?.longName || lastQuote?.shortName || symbol;
-            const sector = lastQuote?.sector || 'Onbekend';
-
-            setFormStatus('Opslaan...', 'info');
-            const payload = {
-                groep_id: ACTIVE_GROUP_ID,
-                ticker: symbol,
-                name: positionName,
-                quantity: qty,
-                avg_price: avgPrice,
-                current_price: priceNow,
-                sector: sector,
-                transactiekost: transactionCost
-            };
-            payload["Broker id"] = null;
-            payload["Groep id"] = ACTIVE_GROUP_ID;
-
-            const { data: insertData, error } = await supabase.from('Portefeuille').insert([payload]).select();
-            if (error) {
-                setFormStatus(error.message || 'Opslaan mislukt', 'error');
-                return;
-            }
-
-            const nextCash = cashAvailable - totalCost;
-            const cashUpdateOk = await updateCashBalance(nextCash);
-            if (!cashUpdateOk) {
-                const insertedId = insertData?.[0]?.id;
-                if (insertedId) {
-                    await supabase
-                        .from('Portefeuille')
-                        .delete()
-                        .eq('groep_id', ACTIVE_GROUP_ID)
-                        .eq('id', insertedId);
-                }
-                setFormStatus('Cash bijwerken mislukt. Probeer opnieuw.', 'error');
-                return;
-            }
-
-            if (lastCashRow) lastCashRow.current_price = nextCash;
-            setFormStatus('Positie opgeslagen', 'success');
-            if (positionForm) positionForm.reset();
-            clearQuoteSummary();
-            fetchPortfolio();
-        }
-
-        async function updateCashBalance(nextAmount) {
-            const { error } = await supabase
-                .from('Portefeuille')
-                .update({ current_price: nextAmount })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('ticker', 'CASH');
-            if (error) {
-                console.error('Cash update mislukt', error);
-                return false;
-            }
-            return true;
-        }
-
-        function handleTableAction(event) {
-            if (!ACTIVE_GROUP_ID) return;
-            const buyBtn = event.target.closest('.buy-position');
-            if (buyBtn) {
-                event.preventDefault();
-                openTradeModal('buy', buyBtn.dataset);
-                return;
-            }
-            const sellBtn = event.target.closest('.sell-position');
-            if (sellBtn) {
-                event.preventDefault();
-                openTradeModal('sell', sellBtn.dataset);
-            }
-        }
-
-        function openTradeModal(mode, dataset) {
-            if (!tradeModal) return;
-            tradeContext = {
-                mode,
-            positionId: dataset.positionId || '',
-                ticker: dataset.ticker || '',
-                quantity: Number(dataset.quantity) || 0,
-                avgPrice: Number(dataset.avgPrice) || 0,
-                price: Number(dataset.price) || 0,
-                fee: Number(dataset.fee) || 0
-            };
-            if (tradeTitle) {
-                tradeTitle.textContent = mode === 'buy' ? `Kopen ${tradeContext.ticker}` : `Verkopen ${tradeContext.ticker}`;
-            }
-            if (tradeTickerEl) {
-                tradeTickerEl.textContent = tradeContext.ticker || '—';
-            }
-            if (tradeInfoEl) {
-                tradeInfoEl.textContent = mode === 'buy'
-                    ? `Beschikbare cash: ${eur.format(Number(lastCashRow?.current_price) || 0)}`
-                    : `Beschikbare aandelen: ${tradeContext.quantity}`;
-            }
-            if (tradeQtyInput) tradeQtyInput.value = '';
-            if (tradePriceInput) tradePriceInput.value = tradeContext.price || '';
-            if (tradeFeeInput) tradeFeeInput.value = transactionCostInput?.value || '';
-            if (tradeSubmitBtn) {
-                tradeSubmitBtn.textContent = mode === 'buy' ? 'Koop bevestigen' : 'Verkoop bevestigen';
-            }
-            setTradeStatus('Vul de velden in en bevestig.', 'info');
-            tradeModal.classList.remove('hidden');
-        }
-
-        function closeTradeModal() {
-            if (!tradeModal) return;
-            tradeModal.classList.add('hidden');
-            tradeContext = null;
-        }
-
-        function setTradeStatus(message, type = 'info') {
-            if (!tradeStatusEl) return;
-            const colors = {
-                info: 'text-slate-400',
-                success: 'text-emerald-600',
-                error: 'text-rose-600'
-            };
-            tradeStatusEl.textContent = message;
-            tradeStatusEl.className = 'text-xs ' + (colors[type] || colors.info);
-        }
-
-        function applyPositionFilter(query) {
-            if (tradeContext?.positionId) {
-                return query.eq('id', tradeContext.positionId);
-            }
-            return query.eq('ticker', tradeContext?.ticker || '');
-        }
-
-        async function handleTradeSubmit(event) {
-            event.preventDefault();
-            if (!tradeContext) {
-                setTradeStatus('Geen positie geselecteerd', 'error');
-                return;
-            }
-            if (!tradeContext.positionId && !tradeContext.ticker) {
-                setTradeStatus('Kon positie niet laden', 'error');
-                return;
-            }
-            const qty = parseFloat(tradeQtyInput?.value || '0');
-            const price = parseFloat(tradePriceInput?.value || '0');
-            let fee = parseFloat(tradeFeeInput?.value || '0');
-            if (!qty || qty <= 0) {
-                setTradeStatus('Aantal moet groter dan 0 zijn', 'error');
-                return;
-            }
-            if (!price || price <= 0) {
-                setTradeStatus('Prijs moet groter dan 0 zijn', 'error');
-                return;
-            }
-            if (isNaN(fee) || fee < 0) {
-                fee = 0;
-            }
-            setTradeStatus('Transactie verwerken...', 'info');
-            try {
-                if (tradeContext.mode === 'buy') {
-                    await processBuy(qty, price, fee);
-                } else {
-                    await processSell(qty, price, fee);
-                }
-                setTradeStatus('Transactie voltooid', 'success');
-                setTimeout(() => {
-                    closeTradeModal();
-                    fetchPortfolio();
-                }, 600);
-            } catch (err) {
-                console.error('Transactie mislukt', err);
-                setTradeStatus(err.message || 'Transactie mislukt', 'error');
-            }
-        }
-
-        async function processBuy(qty, price, fee) {
-            if (!lastCashRow) {
-                throw new Error('Cashpositie niet gevonden');
-            }
-            const cashAvailable = Number(lastCashRow.current_price) || 0;
-            const totalCost = qty * price + fee;
-            if (cashAvailable < totalCost) {
-                throw new Error('Niet genoeg cash voor deze transactie.');
-            }
-            const currentQty = Number(tradeContext.quantity) || 0;
-            const currentAvg = Number(tradeContext.avgPrice) || 0;
-            const currentFee = Number(tradeContext.fee) || 0;
-            const newQty = currentQty + qty;
-            const newAvg = newQty > 0 ? (((currentQty * currentAvg) + (qty * price)) / newQty) : price;
-            const newFeeTotal = currentFee + fee;
-
-            const { error: positionError } = await applyPositionFilter(
-                supabase
-                    .from('Portefeuille')
-                    .update({
-                        quantity: newQty,
-                        avg_price: newAvg,
-                        current_price: price,
-                        transactiekost: newFeeTotal
-                    })
-                    .eq('groep_id', ACTIVE_GROUP_ID)
-            );
-
-            if (positionError) {
-                throw new Error(positionError.message || 'Positie bijwerken mislukt');
-            }
-
-            const newCash = cashAvailable - totalCost;
-            const { error: cashError } = await supabase
-                .from('Portefeuille')
-                .update({ current_price: newCash })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('ticker', 'CASH');
-
-            if (cashError) {
-                throw new Error(cashError.message || 'Cash bijwerken mislukt');
-            }
-
-            tradeContext.quantity = newQty;
-            tradeContext.avgPrice = newAvg;
-            tradeContext.fee = newFeeTotal;
-            if (lastCashRow) {
-                lastCashRow.current_price = newCash;
-            }
-        }
-
-        async function processSell(qty, price, fee) {
-            const currentQty = Number(tradeContext.quantity) || 0;
-            if (qty > currentQty) {
-                throw new Error('Niet genoeg aandelen om te verkopen.');
-            }
-            const proceeds = qty * price - fee;
-            if (proceeds < 0) {
-                throw new Error('Transactie resulteert in negatief bedrag.');
-            }
-            const newQty = currentQty - qty;
-            const currentFee = Number(tradeContext.fee) || 0;
-            const newFeeTotal = currentFee + fee;
-
-            if (newQty > 0) {
-                const { error } = await applyPositionFilter(
-                    supabase
-                        .from('Portefeuille')
-                        .update({
-                            quantity: newQty,
-                            current_price: price,
-                            transactiekost: newFeeTotal
-                        })
-                        .eq('groep_id', ACTIVE_GROUP_ID)
-                );
-                if (error) {
-                    throw new Error(error.message || 'Positie bijwerken mislukt');
-                }
-            } else {
-                const { error } = await applyPositionFilter(
-                    supabase
-                        .from('Portefeuille')
-                        .delete()
-                        .eq('groep_id', ACTIVE_GROUP_ID)
-                );
-                if (error) {
-                    throw new Error(error.message || 'Positie verwijderen mislukt');
-                }
-            }
-
-            const cashCurrent = Number(lastCashRow?.current_price) || 0;
-            const newCash = cashCurrent + proceeds;
-            const { error: cashError } = await supabase
-                .from('Portefeuille')
-                .update({ current_price: newCash })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('ticker', 'CASH');
-            if (cashError) {
-                throw new Error(cashError.message || 'Cash bijwerken mislukt');
-            }
-
-            tradeContext.quantity = newQty;
-            tradeContext.fee = newFeeTotal;
-            if (lastCashRow) {
-                lastCashRow.current_price = newCash;
-            }
-        }
-
-        function isCashRow(row) {
-            return (row?.ticker || '').toUpperCase() === 'CASH';
-        }
-
-        function findCashRow(rows) {
-            return rows.find(isCashRow) || null;
-        }
-
-        function updateCashCard(amount) {
-            const cashEl = document.getElementById('cash-balance');
-            if (cashEl) cashEl.textContent = eur.format(amount);
-            if (amount > 0) {
-                setCashStatus('Klaar om te investeren', 'info');
-            } else {
-                setCashStatus('Geen cash beschikbaar', 'error');
-            }
-        }
-
-        async function ensureCashRow() {
-            if (!ACTIVE_GROUP_ID) return;
-            const payload = {
-                ticker: 'CASH',
-                name: 'Cash',
-                sector: 'Cash',
-                quantity: 0,
-                avg_price: 0,
-                current_price: 0,
-                transactiekost: 0,
-                groep_id: ACTIVE_GROUP_ID,
-                'Groep id': ACTIVE_GROUP_ID,
-                'Broker id': null,
-            };
-            const { error } = await supabase.from('Portefeuille').insert([payload]);
-            if (error) {
-                console.error('Cashpositie aanmaken mislukt:', error);
-            }
-        }
-
-        function setCashControlsState(enabled) {
-            const flag = enabled && ACTIVE_GROUP_ID;
-            if (cashAdjustInput) cashAdjustInput.disabled = !flag;
-            if (cashAddBtn) cashAddBtn.disabled = !flag;
-            if (cashRemoveBtn) cashRemoveBtn.disabled = !flag;
-        }
-
-        function setCashStatus(message, type = 'info') {
-            const statusEl = document.getElementById('cash-status');
-            if (!statusEl) return;
-            const colors = {
-                info: 'text-slate-400',
-                success: 'text-emerald-600',
-                error: 'text-rose-600'
-            };
-            statusEl.textContent = message;
-            statusEl.className = 'text-xs ' + (colors[type] || colors.info);
-        }
-
-        async function handleCashAdjust(mode) {
-            if (!ACTIVE_GROUP_ID) {
-                setCashStatus('Selecteer eerst een groep', 'error');
-                return;
-            }
-            if (!lastCashRow) {
-                setCashStatus('Cashpositie niet gevonden, opnieuw aanmaken...', 'info');
-                await ensureCashRow();
-                lastCashRow = await fetchLatestCashRow();
-                if (!lastCashRow) {
-                    setCashStatus('Cashpositie kon niet worden hersteld.', 'error');
-                    return;
-                }
-                updateCashCard(Number(lastCashRow.current_price) || 0);
-                setCashStatus('Cashpositie hersteld. Transactie verwerken...', 'success');
-            }
-            const raw = parseFloat(cashAdjustInput?.value || '0');
-            if (!raw || raw <= 0) {
-                setCashStatus('Voer een bedrag groter dan 0 in', 'error');
-                return;
-            }
-            const current = Number(lastCashRow.current_price) || 0;
-            const delta = mode === 'add' ? raw : -raw;
-            const next = current + delta;
-            if (next < 0) {
-                setCashStatus('Cash kan niet negatief worden', 'error');
-                return;
-            }
-            setCashStatus('Cash bijwerken...', 'info');
-            const { error } = await supabase
-                .from('Portefeuille')
-                .update({ current_price: next })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('ticker', 'CASH');
-            if (error) {
-                console.error('Cash update mislukt', error);
-                setCashStatus(error.message || 'Cash bijwerken mislukt', 'error');
-                return;
-            }
-            if (cashAdjustInput) cashAdjustInput.value = '';
-            setCashStatus('Cash aangepast', 'success');
-            fetchPortfolio();
-        }
-
-        async function fetchLatestCashRow() {
-            if (!ACTIVE_GROUP_ID) return null;
-            const { data, error } = await supabase
-                .from('Portefeuille')
-                .select('*')
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('ticker', 'CASH')
-                .limit(1);
-            if (error) {
-                console.error('Cash ophalen mislukt', error);
-                return null;
-            }
-            return data?.[0] || null;
-        }
-
-        fetchPortfolio();
     </script>
 </body>
 </html>

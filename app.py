@@ -1,7 +1,11 @@
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify
-import os, logging, traceback, secrets
+import os, logging, traceback, secrets, re
 import yfinance as yf
+import pandas as pd
 from werkzeug.exceptions import HTTPException
+from supabase import create_client, Client
+
+# Importeer helper functies uit auth.py (zorg dat dit bestand bestaat)
 from auth import (
     sign_up_user,
     sign_in_user,
@@ -19,16 +23,29 @@ from auth import (
     list_groups_by_ids,
     initialize_cash_position,
 )
-import re
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 logging.basicConfig(level=logging.INFO)
 
 # --- SUPABASE CONFIGURATIE ---
-# Vul hier jouw gegevens in, deze geven we door aan de HTML
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M"
+
+# --- SERVICE KEY CONFIGURATIE ---
+# Nodig voor de import functionaliteit (schrijfrechten)
+SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDY0OTY3MCwiZXhwIjoyMDc2MjI1NjcwfQ.33JKZ6RDtv64Zc7Y-Kc8eBJVaRgitAa-eZbMhExX0v8"
+
+# Client voor import (admin rechten)
+supabase_admin = None
+try:
+    if "PLAK_HIER" not in SUPABASE_SERVICE_KEY:
+        supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    else:
+        logging.warning("⚠️ WAARSCHUWING: Vul je SERVICE KEY in app.py in voor de import functie!")
+except Exception as e:
+    logging.error(f"Supabase Admin Init Error: {e}")
+
 
 @app.route("/health")
 def health():
@@ -47,6 +64,8 @@ def home():
     return render_template("home.html", group_snapshot=group_snapshot, user_groups=user_groups)
 
 
+# --- HELPER FUNCTIES ---
+
 def _current_group_snapshot():
     """Geeft een compacte snapshot van de huidige groep of None."""
     membership = _current_group_membership()
@@ -62,10 +81,6 @@ def _current_group_snapshot():
     if not group:
         _clear_group_session()
         return None
-
-    ok_cash, cash_res = initialize_cash_position(group["id"], amount=0)
-    if not ok_cash:
-        logging.warning("Cashpositie initialiseren voor groep %s mislukt: %s", group["id"], cash_res)
 
     ok_count, count_value = count_group_members(group["id"])
     if not ok_count:
@@ -90,7 +105,7 @@ def _list_user_groups():
 
     ok_memberships, memberships = list_memberships_for_user(user_id)
     if not ok_memberships:
-        logging.error("Kon lidmaatschappen niet laden: %s", memberships)
+        logging.error("Kon lidmaatschap niet laden: %s", memberships)
         return []
 
     group_ids = [entry.get("group_id") for entry in memberships if entry and entry.get("group_id")]
@@ -177,7 +192,6 @@ def _clear_group_session():
 
 
 def _leave_current_group():
-    # Alleen de sessie wissen zodat de gebruiker meerdere groepen kan behouden
     _clear_group_session()
 
 
@@ -222,6 +236,8 @@ def _load_group_context():
         return group, [], member_rows
     return group, member_rows, None
 
+
+# --- GROEP ROUTES ---
 
 @app.route("/groups/create", methods=["GET", "POST"])
 def create_group():
@@ -309,9 +325,6 @@ def join_group():
                 else:
                     session["group_id"] = group_response["id"]
                     session["group_code"] = group_response.get("invite_code")
-                    ok_cash, cash_response = initialize_cash_position(group_response["id"], amount=0)
-                    if not ok_cash:
-                        logging.warning("Cashpositie kon niet worden aangemaakt voor groep %s bij join: %s", group_response["id"], cash_response)
                     return redirect(url_for("group_dashboard"))
 
     return render_template("group_join.html", error=error, code_value=code_value)
@@ -372,11 +385,15 @@ def select_group(group_id):
 
     return redirect(url_for("group_dashboard"))
 
-# --- NIEUWE ROUTE: PORTFOLIO ---
+
+# --- PORTFOLIO & IMPORT ---
+
 @app.route("/portfolio")
 def portfolio():
     if "user_id" not in session:
         return redirect(url_for("login"))
+    
+    # Haal data op om door te geven aan het dashboard
     active_group = _current_group_snapshot()
     user_groups = _list_user_groups()
 
@@ -387,6 +404,73 @@ def portfolio():
         active_group=active_group,
         user_groups=user_groups,
     )
+
+# IMPORT FUNCTIE (Verwerkt CSV upload naar Supabase)
+@app.route("/import", methods=["GET", "POST"])
+def import_page():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    # Check of de gebruiker wel een groep heeft geselecteerd
+    groep_id = session.get("group_id")
+    if not groep_id:
+        return render_template("import.html", error="Selecteer eerst een groep via Home voordat je kunt importeren.")
+
+    if request.method == "POST":
+        if not supabase_admin:
+            return "Fout: Service Key niet ingesteld in app.py.", 500
+            
+        try:
+            file = request.files['file']
+            if file:
+                # Lees CSV
+                df = pd.read_csv(file)
+                df.columns = [c.lower() for c in df.columns] # Alles kleine letters
+                
+                # Slimme kolom herkenning
+                ticker_col = next((c for c in df.columns if 'ticker' in c or 'symbool' in c or 'product' in c), None)
+                aantal_col = next((c for c in df.columns if 'aantal' in c or 'quantity' in c), None)
+                prijs_col  = next((c for c in df.columns if 'prijs' in c or 'koers' in c or 'price' in c), None)
+                sector_col = next((c for c in df.columns if 'sector' in c or 'categorie' in c), None)
+
+                if not ticker_col or not aantal_col:
+                    return f"Fout: Kon geen 'Ticker' of 'Aantal' kolom vinden. Gevonden kolommen: {list(df.columns)}", 400
+
+                # Broker ID (hardcoded fallback of uitbreiden indien nodig)
+                broker_id = 1
+                
+                for index, row in df.iterrows():
+                    ticker = str(row[ticker_col]).strip().upper()
+                    try:
+                        aantal = int(row[aantal_col])
+                        prijs = float(str(row[prijs_col]).replace(',', '.')) if prijs_col else 0.0
+                        sector = str(row[sector_col]).strip() if sector_col else "Onbekend"
+                    except:
+                        continue # Sla foute rijen over
+
+                    # Check of aandeel al bestaat in DEZE groep
+                    check = supabase_admin.table('Portefeuille').select("*").eq('ticker', ticker).eq('Groep id', groep_id).execute()
+                    
+                    if len(check.data) == 0:
+                        nieuw_item = {
+                            "ticker": ticker,
+                            "name": ticker,
+                            "quantity": aantal,
+                            "avg_price": prijs,
+                            "current_price": 0, # Wordt geupdate door script of client
+                            "sector": sector,
+                            "Broker id": broker_id,
+                            "Groep id": groep_id # Gebruik de ID uit de sessie!
+                        }
+                        supabase_admin.table('Portefeuille').insert(nieuw_item).execute()
+                
+                # Na import, ga terug naar portfolio
+                return redirect(url_for('portfolio'))
+                
+        except Exception as e:
+            return f"Import fout: {str(e)}"
+
+    return render_template("import.html")
 
 
 @app.route("/api/quote/<symbol>")
@@ -454,21 +538,24 @@ def logout():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    mode = request.form.get("mode") if request.method == "POST" else request.args.get("mode", "login")
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         if not email:
-            return render_template("login.html", error="Voer een e-mailadres in.", email_value=email)
+            return render_template("login.html", error="Voer een e-mailadres in.", email_value=email, mode_value=mode or "login")
         pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
         if not re.match(pattern, email):
-            return render_template("login.html", error="Ongeldig e-mailadres formaat.", email_value=email)
+            return render_template("login.html", error="Ongeldig e-mailadres formaat.", email_value=email, mode_value=mode or "login")
+        if mode == "register":
+            return redirect(url_for("register", email=email))
         ok, res = sign_in_user(email)
         if not ok:
-            return render_template("login.html", error=res, email_value=email)
+            return render_template("login.html", error=res, email_value=email, mode_value="login")
         session["user_id"] = res.get("ledenid")
         session["email"] = res.get("email")
         return redirect(url_for("home"))
     preset_email = request.args.get("email", "")
-    return render_template("login.html", email_value=preset_email)
+    return render_template("login.html", email_value=preset_email, mode_value=mode or "login")
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
