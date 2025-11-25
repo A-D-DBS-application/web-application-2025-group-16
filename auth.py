@@ -197,14 +197,6 @@ def get_membership_for_user_in_group(ledenid, group_id):
         return False, str(e)
 
 
-def remove_membership_for_user(ledenid):
-    try:
-        supabase.table(GROUP_MEMBER_TABLE).delete().eq("ledenid", ledenid).execute()
-        return True, None
-    except Exception as e:
-        return False, str(e)
-
-
 def add_member_to_group(group_id, ledenid, role="member"):
     try:
         payload = {
@@ -222,6 +214,20 @@ def add_member_to_group(group_id, ledenid, role="member"):
 
 def initialize_cash_position(group_id, amount=0.0):
     try:
+        existing = (supabase
+                    .table(PORTFOLIO_TABLE)
+                    .select("id", "current_price")
+                    .eq("groep_id", group_id)
+                    .eq("ticker", "CASH")
+                    .limit(1)
+                    .execute())
+        if existing.data:
+            # Zorg dat er minstens een bedrag is ingesteld
+            current_id = existing.data[0].get("id")
+            needs_update = existing.data[0].get("current_price") is None
+            if needs_update and current_id is not None:
+                supabase.table(PORTFOLIO_TABLE).update({"current_price": amount}).eq("id", current_id).execute()
+            return True, existing.data[0]
         payload = _build_cash_payload(group_id, amount)
         response = supabase.table(PORTFOLIO_TABLE).insert(payload).execute()
         if not response.data:

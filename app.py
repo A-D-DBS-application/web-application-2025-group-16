@@ -63,6 +63,10 @@ def _current_group_snapshot():
         _clear_group_session()
         return None
 
+    ok_cash, cash_res = initialize_cash_position(group["id"], amount=0)
+    if not ok_cash:
+        logging.warning("Cashpositie initialiseren voor groep %s mislukt: %s", group["id"], cash_res)
+
     ok_count, count_value = count_group_members(group["id"])
     if not ok_count:
         logging.warning("Kon leden niet tellen: %s", count_value)
@@ -305,6 +309,9 @@ def join_group():
                 else:
                     session["group_id"] = group_response["id"]
                     session["group_code"] = group_response.get("invite_code")
+                    ok_cash, cash_response = initialize_cash_position(group_response["id"], amount=0)
+                    if not ok_cash:
+                        logging.warning("Cashpositie kon niet worden aangemaakt voor groep %s bij join: %s", group_response["id"], cash_response)
                     return redirect(url_for("group_dashboard"))
 
     return render_template("group_join.html", error=error, code_value=code_value)
@@ -447,24 +454,21 @@ def logout():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    mode = request.form.get("mode") if request.method == "POST" else request.args.get("mode", "login")
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         if not email:
-            return render_template("login.html", error="Voer een e-mailadres in.", email_value=email, mode_value=mode or "login")
+            return render_template("login.html", error="Voer een e-mailadres in.", email_value=email)
         pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
         if not re.match(pattern, email):
-            return render_template("login.html", error="Ongeldig e-mailadres formaat.", email_value=email, mode_value=mode or "login")
-        if mode == "register":
-            return redirect(url_for("register", email=email))
+            return render_template("login.html", error="Ongeldig e-mailadres formaat.", email_value=email)
         ok, res = sign_in_user(email)
         if not ok:
-            return render_template("login.html", error=res, email_value=email, mode_value="login")
+            return render_template("login.html", error=res, email_value=email)
         session["user_id"] = res.get("ledenid")
         session["email"] = res.get("email")
         return redirect(url_for("home"))
     preset_email = request.args.get("email", "")
-    return render_template("login.html", email_value=preset_email, mode_value=mode or "login")
+    return render_template("login.html", email_value=preset_email)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():

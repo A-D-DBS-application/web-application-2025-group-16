@@ -1069,18 +1069,21 @@
             statusEl.className = 'text-xs ' + (colors[type] || colors.info);
         }
 
-        function getRowId(row) {
-            return row?.id ?? row?.ID ?? row?.['Portefeuille id'] ?? row?.['portefeuille_id'];
-        }
-
         async function handleCashAdjust(mode) {
             if (!ACTIVE_GROUP_ID) {
                 setCashStatus('Selecteer eerst een groep', 'error');
                 return;
             }
             if (!lastCashRow) {
-                setCashStatus('Cashpositie niet gevonden', 'error');
-                return;
+                setCashStatus('Cashpositie niet gevonden, opnieuw aanmaken...', 'info');
+                await ensureCashRow();
+                lastCashRow = await fetchLatestCashRow();
+                if (!lastCashRow) {
+                    setCashStatus('Cashpositie kon niet worden hersteld.', 'error');
+                    return;
+                }
+                updateCashCard(Number(lastCashRow.current_price) || 0);
+                setCashStatus('Cashpositie hersteld. Transactie verwerken...', 'success');
             }
             const raw = parseFloat(cashAdjustInput?.value || '0');
             if (!raw || raw <= 0) {
@@ -1108,6 +1111,21 @@
             if (cashAdjustInput) cashAdjustInput.value = '';
             setCashStatus('Cash aangepast', 'success');
             fetchPortfolio();
+        }
+
+        async function fetchLatestCashRow() {
+            if (!ACTIVE_GROUP_ID) return null;
+            const { data, error } = await supabase
+                .from('Portefeuille')
+                .select('*')
+                .eq('groep_id', ACTIVE_GROUP_ID)
+                .eq('ticker', 'CASH')
+                .limit(1);
+            if (error) {
+                console.error('Cash ophalen mislukt', error);
+                return null;
+            }
+            return data?.[0] || null;
         }
 
         fetchPortfolio();

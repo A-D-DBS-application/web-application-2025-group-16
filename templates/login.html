@@ -3,48 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <title>Inloggen - Investment Group Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .toggle-button { color: #475569; transition: background 0.2s, color 0.2s; }
+        .toggle-button.active { background: #fff; color: #0f172a; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.15); }
+    </style>
 </head>
-<body>
-    <div class="login-page">
-        <div class="login-container">
-            <h1 class="title">Investment Group Manager</h1>
-            <p class="subtitle">Create or join investment groups to manage portfolios together</p>
-
-            <div class="auth-toggle">
-                <button type="button" class="toggle-button" data-mode="login">Login</button>
-                <button type="button" class="toggle-button" data-mode="register">Registreren</button>
+<body class="min-h-screen bg-slate-100 font-sans">
+    <div class="min-h-screen flex items-center justify-center px-4">
+        <div class="w-full max-w-lg bg-white rounded-[2rem] shadow-xl shadow-blue-600/5 border border-slate-100 p-8 space-y-8">
+            <div class="space-y-3 text-center">
+                <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Account</p>
+                <h1 class="text-3xl font-bold text-slate-900">Welkom terug</h1>
+                <p class="text-sm text-slate-500">Gebruik je club-account om verder te bouwen aan je portefeuille.</p>
             </div>
 
-            {% if error %}<p class="error">{{ error }}</p>{% endif %}
-            
-            <form method="post" action="{{ url_for('login') }}" id="authForm" data-active-mode="{{ mode_value|default('login') }}">
-                <input type="hidden" name="mode" id="authMode" value="{{ mode_value|default('login') }}">
-                <label for="email" class="form-label">Email</label>
-                <input type="email" id="email" name="email" placeholder="you@example.com" required class="form-input" value="{{ email_value|default('') }}">
-                
-                <button type="submit" class="submit-button">
-                    {{ 'Log In' if (mode_value|default('login')) == 'login' else 'Registreren' }}
+            <div class="flex bg-slate-100 rounded-2xl p-1 text-sm font-semibold">
+                <button type="button" class="toggle-button flex-1 rounded-xl py-2 active">Log in</button>
+                <button id="register-toggle" type="button" class="toggle-button flex-1 rounded-xl py-2">Registreren</button>
+            </div>
+
+            {% if error %}
+            <div class="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('login') }}" id="authForm" class="space-y-5">
+                <div>
+                    <label for="email" class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2">Emailadres</label>
+                    <input type="email" id="email" name="email" placeholder="you@example.com" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" value="{{ email_value|default('') }}">
+                </div>
+
+                <button type="submit" class="submit-button w-full py-3 rounded-2xl bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition">
+                    Log in
                 </button>
             </form>
-            
-            <p><a href="{{ url_for('home') }}">Terug naar home</a></p>
+
+            <p class="text-center text-sm text-slate-500">Wil je enkel rondkijken? <a href="{{ url_for('home') }}" class="text-blue-600 font-semibold">Terug naar home</a></p>
         </div>
     </div>
+
     <script>
         (() => {
-            const form = document.getElementById("authForm");
-            const modeInput = document.getElementById("authMode");
-            const submitBtn = form.querySelector(".submit-button");
-            const toggleButtons = document.querySelectorAll(".toggle-button");
-            const setMode = (mode) => {
-                const normalized = mode === "register" ? "register" : "login";
-                modeInput.value = normalized;
-                submitBtn.textContent = normalized === "register" ? "Registreren" : "Log In";
-                toggleButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === normalized));
-            };
-            toggleButtons.forEach(btn => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
-            setMode(form.dataset.activeMode || "login");
+            const btn = document.getElementById('register-toggle');
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                const emailValue = document.getElementById('email').value || '';
+                const target = `{{ url_for('register') }}${emailValue ? `?email=${encodeURIComponent(emailValue)}` : ''}`;
+                window.location.href = target;
+            });
         })();
     </script>
 </body>
