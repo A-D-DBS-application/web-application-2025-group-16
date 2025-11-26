@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Home - InvestClub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 flex items-center justify-center min-h-screen px-4">
+
+    <div class="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 max-w-3xl w-full">
+        <div class="flex flex-col gap-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <p class="text-sm uppercase tracking-wide text-slate-400 font-semibold">InvestClub</p>
+                    <h1 class="text-3xl font-bold text-slate-900">Welkom terug!</h1>
+                    <p class="text-slate-500">Kies hoe je verder wilt gaan met je groep.</p>
+                </div>
+                <div class="bg-blue-50 p-4 rounded-2xl inline-flex items-center gap-3 text-blue-700">
+                    <i data-lucide="user" class="h-8 w-8"></i>
+                    <span class="font-medium">Ingelogd</span>
+                </div>
+            </div>
+
+            {% if group_snapshot %}
+            <div class="border border-blue-100 bg-blue-50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <p class="text-sm text-blue-500 font-semibold">Je groep</p>
+                    <h2 class="text-2xl font-bold text-blue-900">{{ group_snapshot.name }}</h2>
+                    <p class="text-blue-700 text-sm">{{ group_snapshot.member_total }} lid{% if group_snapshot.member_total != 1 %}den{% endif %}</p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="bg-white rounded-xl px-4 py-2 text-center text-sm text-slate-500">
+                        Code<br><span class="text-slate-900 font-semibold">{{ group_snapshot.code }}</span>
+                    </div>
+                    <a href="/groups/current" class="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow">
+                        <i data-lucide="external-link" class="h-5 w-5"></i>
+                        Open groepspagina
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="grid md:grid-cols-3 gap-4">
+                <a href="/groups/create" class="group-action-card">
+                    <div class="icon-circle text-blue-600 bg-blue-50">
+                        <i data-lucide="plus-circle" class="h-6 w-6"></i>
+                    </div>
+                    <div>
+                        <h3>Nieuwe groep</h3>
+                        <p>Start een gloednieuwe investeringsgroep.</p>
+                    </div>
+                </a>
+                <a href="/groups/join" class="group-action-card">
+                    <div class="icon-circle text-emerald-600 bg-emerald-50">
+                        <i data-lucide="users" class="h-6 w-6"></i>
+                    </div>
+                    <div>
+                        <h3>Aansluiten</h3>
+                        <p>Gebruik een uitnodigingscode om mee te doen.</p>
+                    </div>
+                </a>
+                <a href="/logout" class="group-action-card">
+                    <div class="icon-circle text-rose-600 bg-rose-50">
+                        <i data-lucide="log-out" class="h-6 w-6"></i>
+                    </div>
+                    <div>
+                        <h3>Uitloggen</h3>
+                        <p>Beëindig deze sessie veilig.</p>
+                    </div>
+                </a>
+            </div>
+
+            <div class="text-center text-sm text-slate-400">
+                Heb je nog geen groep? Je kunt er altijd later een aanmaken of joinen.
+            </div>
+
+            <div class="group-list-card">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                        <p class="text-sm text-slate-400 uppercase tracking-wide">Jouw groepen</p>
+                        <h2 class="text-xl font-semibold text-slate-900">Overzicht van al je lidmaatschappen</h2>
+                    </div>
+                    <span class="text-sm text-slate-500">{{ user_groups|length }} groep{% if (user_groups|length) != 1 %}en{% endif %}</span>
+                </div>
+
+                <div class="group-list">
+                    {% if user_groups %}
+                        {% for group in user_groups %}
+                        <div class="group-list-row">
+                            <div class="group-list-info">
+                                <p class="text-base font-semibold text-slate-900 flex items-center gap-2">
+                                    {{ group.name or "Onbekende groep" }}
+                                    {% if group.is_current %}
+                                    <span class="current-pill">Actief</span>
+                                    {% endif %}
+                                </p>
+                                <p class="text-sm text-slate-500">Code: {{ group.code or "-" }} · Rol: {{ group.role or "member" }}</p>
+                            </div>
+                            <div class="group-list-meta">
+                                <p class="text-lg font-semibold text-slate-900">
+                                    {{ group.member_total if group.member_total is not none else "?" }}
+                                </p>
+                                <p class="text-xs uppercase tracking-wide text-slate-400">
+                                    {% set members = group.member_total if group.member_total is not none else 0 %}
+                                    {{ "lid" if members == 1 else "leden" }}
+                                </p>
+                            </div>
+                            <form method="post" action="/groups/select/{{ group.id }}" class="open-group-form">
+                                <button type="submit" class="open-group-btn" {% if group.is_current %}disabled{% endif %}>
+                                    {% if group.is_current %}Geopend{% else %}Open groep{% endif %}
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="group-list-row justify-center text-slate-500 text-sm">
+                            Je bent nog geen lid van een groep.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .group-action-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: all 150ms ease;
+        }
+        .group-action-card:hover {
+            transform: translateY(-2px);
+            border-color: #60a5fa;
+            background: #fff;
+        }
+        .group-action-card h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .group-action-card p {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+        .icon-circle {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .group-list-card {
+            margin-top: 1.5rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            background: #fff;
+        }
+        .group-list {
+            margin-top: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .group-list-row {
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .group-list-info {
+            flex: 1 1 220px;
+        }
+        .group-list-meta {
+            text-align: right;
+        }
+        .current-pill {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: #dbeafe;
+            color: #1d4ed8;
+            border-radius: 999px;
+            padding: 0.1rem 0.6rem;
+        }
+        .open-group-form {
+            margin-left: auto;
+        }
+        .open-group-btn {
+            border: 1px solid #3b82f6;
+            color: #1d4ed8;
+            background: #eff6ff;
+            font-weight: 600;
+            border-radius: 999px;
+            padding: 0.45rem 1rem;
+            transition: transform 120ms ease;
+        }
+        .open-group-btn:hover:not([disabled]) {
+            transform: translateY(-1px);
+        }
+        .open-group-btn[disabled] {
+            border-color: #cbd5f5;
+            color: #94a3b8;
+            background: #f8fafc;
+            cursor: not-allowed;
+        }
+    </style>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Registreren - InvestClub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="min-h-screen bg-slate-100 font-sans">
+  <div class="min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-xl bg-white rounded-[2rem] shadow-xl shadow-blue-600/5 border border-slate-100 p-8 space-y-8">
+      <div class="space-y-2 text-center">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Account</p>
+        <h1 class="text-3xl font-bold text-slate-900">Maak je account</h1>
+        <p class="text-sm text-slate-500">Vul je gegevens in om onderdeel te worden van je investeringsclub.</p>
+      </div>
+
+      {% if error %}
+      <div class="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3 text-center">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('register') }}" class="space-y-5">
+        <div>
+          <label class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2" for="email">Emailadres</label>
+          <input id="email" type="email" name="email" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" placeholder="jij@voorbeeld.be" value="{{ email_value|default('') }}">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2" for="voornaam">Voornaam</label>
+          <input id="voornaam" type="text" name="voornaam" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" placeholder="Voornaam" value="{{ voornaam_value|default('') }}">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2" for="achternaam">Achternaam</label>
+          <input id="achternaam" type="text" name="achternaam" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" placeholder="Achternaam" value="{{ achternaam_value|default('') }}">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2" for="gsm">GSM</label>
+          <input id="gsm" type="text" name="gsm" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" placeholder="04xx xx xx xx" value="{{ gsm_value|default('') }}">
+        </div>
+
+        <button type="submit" class="w-full py-3 rounded-2xl bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition">Account registreren</button>
+      </form>
+
+      <p class="text-center text-sm text-slate-500">Heb je al een account? <a href="{{ url_for('login') }}" class="text-blue-600 font-semibold">Terug naar login</a></p>
+    </div>
+  </div>
+</body>
+</html>
