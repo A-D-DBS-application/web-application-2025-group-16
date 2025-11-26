@@ -20,6 +20,9 @@ from auth import (
     initialize_cash_position,
     remove_member_from_group,  # NIEUW
     delete_group,  # NIEUW
+    add_cash_transaction,
+    list_cash_transactions_for_group,
+    get_cash_balance_for_group,
 )
 import re
 
@@ -389,6 +392,50 @@ def portfolio():
         active_group=active_group,
         user_groups=user_groups,
     )
+
+
+@app.route("/cash", methods=["GET", "POST"])
+def cashbox():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    membership = _current_group_membership()
+    if not membership:
+        return redirect(url_for("home"))
+
+    group_id = membership["group_id"]
+    error = None
+
+    if request.method == "POST":
+        try:
+            amount_raw = request.form.get("amount", "0").strip()
+            direction = (request.form.get("direction") or "").strip().lower()
+            description = (request.form.get("description") or "").strip()
+            amount = float(amount_raw)
+            if amount <= 0:
+                error = "Bedrag moet groter dan 0 zijn"
+            elif direction not in ("in", "out"):
+                error = "Type moet 'in' of 'out' zijn"
+            else:
+                ok, res = add_cash_transaction(group_id, amount, direction, description, created_by=session.get("user_id"))
+                if not ok:
+                    error = f"Transactie opslaan mislukt: {res}"
+                else:
+                    return redirect(url_for("cashbox"))
+        except Exception as exc:
+            error = f"Ongeldige invoer: {exc}"
+
+    ok_hist, history = list_cash_transactions_for_group(group_id)
+    if not ok_hist:
+        history = []
+        error = error or f"Kon transacties niet laden: {history}"
+
+    ok_bal, balance = get_cash_balance_for_group(group_id)
+    if not ok_bal:
+        balance = 0.0
+        error = error or f"Kon saldo niet berekenen: {balance}"
+
+    return render_template("cashbox.html", balance=balance, history=history, error=error)
 
 
 @app.route("/api/quote/<symbol>")

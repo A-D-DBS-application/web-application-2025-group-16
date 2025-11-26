@@ -27,6 +27,7 @@ GROUP_OWNER_COLUMN = "owner_lid_id"
 GROUP_ROLE_COLUMN = "rol"
 
 PORTFOLIO_TABLE = "Portefeuille"
+CASH_TX_TABLE = "Kas"
 
 
 def _build_cash_payload(group_id, amount):
@@ -39,8 +40,6 @@ def _build_cash_payload(group_id, amount):
         "current_price": amount,
         "transactiekost": 0,
         "groep_id": group_id,
-        "Groep id": group_id,
-        "Broker id": None,
     }
 
 def sign_in_user(email):
@@ -217,17 +216,17 @@ def initialize_cash_position(group_id, amount=0.0):
     try:
         existing = (supabase
                     .table(PORTFOLIO_TABLE)
-                    .select("id", "current_price")
+                    .select("port_id", "current_price")
                     .eq("groep_id", group_id)
                     .eq("ticker", "CASH")
                     .limit(1)
                     .execute())
         if existing.data:
             # Zorg dat er minstens een bedrag is ingesteld
-            current_id = existing.data[0].get("id")
+            current_id = existing.data[0].get("port_id")
             needs_update = existing.data[0].get("current_price") is None
             if needs_update and current_id is not None:
-                supabase.table(PORTFOLIO_TABLE).update({"current_price": amount}).eq("id", current_id).execute()
+                supabase.table(PORTFOLIO_TABLE).update({"current_price": amount}).eq("port_id", current_id).execute()
             return True, existing.data[0]
         payload = _build_cash_payload(group_id, amount)
         response = supabase.table(PORTFOLIO_TABLE).insert(payload).execute()
@@ -248,6 +247,65 @@ def list_group_members(group_id):
                     .execute())
         normalized = [_normalize_membership_row(row) for row in (response.data or [])]
         return True, normalized
+    except Exception as e:
+        return False, str(e)
+
+
+# --- KAS (CASHBOX) HULPFUNCTIES ---
+def add_cash_transaction(group_id: int, amount: float, direction: str, description: str | None, created_by: int | None = None):
+    try:
+        if direction not in ("in", "out"):
+            return False, "Ongeldig type; gebruik 'in' of 'out'"
+        payload = {
+            "groep_id": group_id,
+            "amount": float(amount),
+            "type": direction,
+            "description": description or None,
+        }
+        if created_by is not None:
+            payload["created_by"] = created_by
+        response = supabase.table(CASH_TX_TABLE).insert(payload).execute()
+        if not response.data:
+            return False, "Kon transactie niet opslaan"
+        return True, response.data[0]
+    except Exception as e:
+        return False, str(e)
+
+
+def list_cash_transactions_for_group(group_id: int, limit: int | None = 200):
+    try:
+        query = (
+            supabase
+            .table(CASH_TX_TABLE)
+            .select("date, amount, type, description")
+            .eq("groep_id", group_id)
+            .order("kas_id", desc=True)
+        )
+        if limit:
+            query = query.limit(limit)
+        response = query.execute()
+        return True, response.data or []
+    except Exception as e:
+        return False, str(e)
+
+
+def get_cash_balance_for_group(group_id: int):
+    try:
+        response = (
+            supabase
+            .table(CASH_TX_TABLE)
+            .select("amount, type")
+            .eq("groep_id", group_id)
+            .execute()
+        )
+        total = 0.0
+        for row in (response.data or []):
+            amt = float(row.get("amount") or 0)
+            if (row.get("type") or "").lower() == "in":
+                total += amt
+            else:
+                total -= amt
+        return True, total
     except Exception as e:
         return False, str(e)
 

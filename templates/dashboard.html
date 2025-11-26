@@ -747,8 +747,6 @@
                 sector: sector,
                 transactiekost: transactionCost
             };
-            payload["Broker id"] = null;
-            payload["Groep id"] = ACTIVE_GROUP_ID;
 
             const { data: insertData, error } = await supabase.from('Portefeuille').insert([payload]).select();
             if (error) {
@@ -1031,22 +1029,28 @@
         }
 
         async function ensureCashRow() {
-            if (!ACTIVE_GROUP_ID) return;
-            const payload = {
-                ticker: 'CASH',
-                name: 'Cash',
-                sector: 'Cash',
-                quantity: 0,
-                avg_price: 0,
-                current_price: 0,
-                transactiekost: 0,
-                groep_id: ACTIVE_GROUP_ID,
-                'Groep id': ACTIVE_GROUP_ID,
-                'Broker id': null,
-            };
-            const { error } = await supabase.from('Portefeuille').insert([payload]);
-            if (error) {
-                console.error('Cashpositie aanmaken mislukt:', error);
+            if (!ACTIVE_GROUP_ID) return false;
+            try {
+                const response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/cash/ensure`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.error || 'Cashpositie kon niet worden aangemaakt');
+                }
+                const payload = await response.json().catch(() => null);
+                if (payload?.cash) {
+                    lastCashRow = payload.cash;
+                } else {
+                    lastCashRow = await fetchLatestCashRow();
+                }
+                return Boolean(lastCashRow);
+            } catch (err) {
+                console.error('Cashpositie aanmaken mislukt:', err);
+                setCashStatus(err.message || 'Cashpositie aanmaken mislukt', 'error');
+                return false;
             }
         }
 
