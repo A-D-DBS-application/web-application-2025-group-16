@@ -70,6 +70,24 @@
                 Verversen
             </button>
         </div>
+        
+        <!-- FLUSH MESSAGES: Feedback van de server -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="mb-8">
+              {% for category, message in messages %}
+                <div class="p-4 rounded-lg flex items-center gap-2 {{ 'bg-emerald-100 text-emerald-800 border border-emerald-200' if category == 'success' else 'bg-rose-100 text-rose-800 border border-rose-200' }}">
+                   {% if category == 'success' %}
+                     <i data-lucide="check-circle" class="h-5 w-5"></i>
+                   {% else %}
+                     <i data-lucide="alert-circle" class="h-5 w-5"></i>
+                   {% endif %}
+                   <span class="font-medium">{{ message }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
 
         {% set builder_disabled = 'disabled' if not active_group else '' %}
 

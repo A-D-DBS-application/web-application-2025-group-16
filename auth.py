@@ -406,6 +406,10 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
     Voegt een positie toe of update de bestaande positie met een nieuw gemiddelde.
     """
     try:
+        # FIX: Forceer quantity naar een int omdat de DB kolom 'smallint' is.
+        # "10.0" (float) geeft een error, 10 (int) mag wel.
+        quantity_int = int(float(quantity))
+
         # 1. Kijk of positie al bestaat
         existing = (supabase
                     .table(PORTFOLIO_TABLE)
@@ -422,17 +426,18 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
             old_avg = float(current_row.get("avg_price") or 0)
             
             # Bereken nieuw gewogen gemiddelde
-            new_qty = old_qty + quantity
+            new_qty = int(old_qty) + quantity_int
+            
             if new_qty > 0:
-                new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+                new_avg = ((old_qty * old_avg) + (quantity_int * price)) / new_qty
             else:
                 new_avg = price
             
-            # Update database
+            # Update database - Zorg dat quantity als int wordt verstuurd
             supabase.table(PORTFOLIO_TABLE).update({
-                "quantity": new_qty,
+                "quantity": new_qty, 
                 "avg_price": new_avg,
-                "current_price": price # Update ook de 'huidige prijs' met de laatst bekende
+                "current_price": price 
             }).eq("id", current_row.get("id")).execute()
             
             logging.info(f"Updated {ticker}: Old Qty {old_qty} -> New Qty {new_qty}")
@@ -442,11 +447,11 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
             payload = {
                 "groep_id": group_id,
                 "ticker": ticker,
-                "name": ticker, # Naam kan later aangevuld worden via YFinance indien nodig
-                "quantity": quantity,
+                "name": ticker, 
+                "quantity": quantity_int, # Hier gebruiken we de int versie
                 "avg_price": price,
                 "current_price": price,
-                "sector": "Onbekend", # CSV bevat meestal geen sector, zet placeholder
+                "sector": "Onbekend", 
                 "transactiekost": 0
             }
             supabase.table(PORTFOLIO_TABLE).insert(payload).execute()

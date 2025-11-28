@@ -626,20 +626,24 @@ def remove_group_member(member_id: int):
 @app.route("/group/<int:group_id>/import_csv", methods=["POST"])
 def import_csv(group_id):
     if "user_id" not in session:
+        flash("Je moet ingelogd zijn.", "error")
         return redirect(url_for("login"))
 
     # Check of de gebruiker toegang heeft tot de groep
     user_id = session["user_id"]
     ok_membership, _ = get_membership_for_user_in_group(user_id, group_id)
     if not ok_membership:
+        flash("Geen toegang tot deze groep.", "error")
         return redirect(url_for("portfolio"))
 
     if 'file' not in request.files:
+        flash("Geen bestand gevonden in het verzoek.", "error")
         return redirect(url_for("portfolio"))
 
     file = request.files['file']
     
     if file.filename == '':
+        flash("Geen bestand geselecteerd.", "error")
         return redirect(url_for("portfolio"))
 
     if file:
@@ -648,22 +652,27 @@ def import_csv(group_id):
             stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
             
             # 2. Probeer CSV te lezen (ondersteunt ; en , als scheidingsteken)
-            # engine='python' en sep=None zorgt dat pandas zelf probeert te raden
             try:
+                # Probeer eerst met pandas auto-detectie
                 df = pd.read_csv(stream, sep=None, engine='python')
-            except:
-                # Fallback als auto-detectie faalt
+            except Exception as read_err:
+                print(f"Pandas auto-read failed: {read_err}")
+                # Fallback: forceer puntkomma (veel gebruikt in Europa)
                 stream.seek(0)
                 df = pd.read_csv(stream, sep=';')
 
+            if df.empty:
+                flash("Het geüploade bestand is leeg.", "error")
+                return redirect(url_for("portfolio"))
+
             # 3. Kolomnamen normaliseren (alles kleine letters, geen spaties)
-            df.columns = [c.lower().strip() for c in df.columns]
+            df.columns = [str(c).lower().strip() for c in df.columns]
             
             # 4. Zoek de juiste kolommen (maakt niet uit hoe je broker ze noemt)
             col_map = {
                 'ticker': ['ticker', 'symbol', 'symbool', 'product', 'isin'],
                 'amount': ['aantal', 'quantity', 'stuks', 'number'],
-                'price': ['price', 'prijs', 'koers', 'aankoopprijs', 'avg price', 'gem. aankoopprijs']
+                'price': ['price', 'prijs', 'koers', 'aankoopprijs', 'avg price', 'gem. aankoopprijs', 'cost']
             }
 
             found_cols = {}
@@ -676,31 +685,62 @@ def import_csv(group_id):
             # Check of we alles gevonden hebben
             if len(found_cols) == 3:
                 count = 0
+                errors = 0
                 for index, row in df.iterrows():
-                    ticker = str(row[found_cols['ticker']]).upper().strip()
-                    amount = row[found_cols['amount']]
-                    price = row[found_cols['price']]
-
-                    # Simpele validatie
                     try:
-                        # Verwijder valuta tekens en maak getal
-                        if isinstance(amount, str): amount = float(amount.replace(',', '.').replace('€', '').strip())
-                        if isinstance(price, str): price = float(price.replace(',', '.').replace('€', '').strip())
-                        
-                        if ticker and pd.notna(amount) and amount > 0:
+                        ticker_val = row[found_cols['ticker']]
+                        amount_val = row[found_cols['amount']]
+                        price_val = row[found_cols['price']]
+
+                        # Overslaan als leeg
+                        if pd.isna(ticker_val) or pd.isna(amount_val):
+                            continue
+
+                        ticker = str(ticker_val).upper().strip()
+
+                        # Getallen opschonen (komma naar punt, valuta tekens weg)
+                        def clean_number(val):
+                            if isinstance(val, (int, float)):
+                                return float(val)
+                            val = str(val).replace('€', '').replace('$', '').strip()
+                            # Europees formaat 1.000,00 -> 1000.00
+                            if ',' in val and '.' in val:
+                                if val.find(',') < val.find('.'):
+                                    val = val.replace(',', '') # 1,000.00 -> 1000.00
+                                else:
+                                    val = val.replace('.', '').replace(',', '.') # 1.000,00 -> 1000.00
+                            elif ',' in val:
+                                val = val.replace(',', '.')
+                            return float(val)
+
+                        amount = clean_number(amount_val)
+                        price = clean_number(price_val)
+
+                        if ticker and amount > 0:
                             # Opslaan in DB via auth.py functie
-                            add_portfolio_position(group_id, ticker, float(amount), float(price), user_id)
-                            count += 1
+                            ok, msg = add_portfolio_position(group_id, ticker, amount, price, user_id)
+                            if ok:
+                                count += 1
+                            else:
+                                print(f"DB Error row {index}: {msg}")
+                                errors += 1
                     except Exception as row_error:
                         print(f"Skipping row {index}: {row_error}")
+                        errors += 1
 
-                print(f"Succesvol {count} posities geïmporteerd.")
+                if count > 0:
+                    flash(f"Succes! {count} posities geïmporteerd.", "success")
+                else:
+                    flash("Geen geldige posities gevonden in het bestand.", "error")
             else:
-                print(f"Kon kolommen niet vinden. Gevonden: {df.columns}")
+                missing = [k for k in ['ticker', 'amount', 'price'] if k not in found_cols]
+                flash(f"Kon de juiste kolommen niet vinden. Ontbrekend: {', '.join(missing)}. Controleer je CSV.", "error")
+                print(f"Gevonden kolommen in CSV: {df.columns}")
 
         except Exception as e:
             print(f"Fout bij CSV import: {e}")
             logging.error(traceback.format_exc())
+            flash(f"Er ging iets mis bij het importeren: {str(e)}", "error")
 
     return redirect(url_for("portfolio"))
 
