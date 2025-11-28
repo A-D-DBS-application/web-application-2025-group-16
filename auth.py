@@ -399,3 +399,60 @@ def delete_group(group_id: int):
     except Exception as e:
         logging.error("Fout bij verwijderen groep: %s", str(e))
         return False, f"Kon groep niet verwijderen: {str(e)}"
+
+# --- NIEUWE FUNCTIE: Portefeuille Positie Toevoegen/Updaten ---
+def add_portfolio_position(group_id, ticker, quantity, price, user_id):
+    """
+    Voegt een positie toe of update de bestaande positie met een nieuw gemiddelde.
+    """
+    try:
+        # 1. Kijk of positie al bestaat
+        existing = (supabase
+                    .table(PORTFOLIO_TABLE)
+                    .select("*")
+                    .eq("groep_id", group_id)
+                    .eq("ticker", ticker)
+                    .limit(1)
+                    .execute())
+        
+        if existing.data and len(existing.data) > 0:
+            # UPDATE: Bestaande positie
+            current_row = existing.data[0]
+            old_qty = float(current_row.get("quantity") or 0)
+            old_avg = float(current_row.get("avg_price") or 0)
+            
+            # Bereken nieuw gewogen gemiddelde
+            new_qty = old_qty + quantity
+            if new_qty > 0:
+                new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+            else:
+                new_avg = price
+            
+            # Update database
+            supabase.table(PORTFOLIO_TABLE).update({
+                "quantity": new_qty,
+                "avg_price": new_avg,
+                "current_price": price # Update ook de 'huidige prijs' met de laatst bekende
+            }).eq("id", current_row.get("id")).execute()
+            
+            logging.info(f"Updated {ticker}: Old Qty {old_qty} -> New Qty {new_qty}")
+            
+        else:
+            # INSERT: Nieuwe positie
+            payload = {
+                "groep_id": group_id,
+                "ticker": ticker,
+                "name": ticker, # Naam kan later aangevuld worden via YFinance indien nodig
+                "quantity": quantity,
+                "avg_price": price,
+                "current_price": price,
+                "sector": "Onbekend", # CSV bevat meestal geen sector, zet placeholder
+                "transactiekost": 0
+            }
+            supabase.table(PORTFOLIO_TABLE).insert(payload).execute()
+            logging.info(f"Inserted new position: {ticker}")
+            
+        return True, "Succes"
+    except Exception as e:
+        logging.error(f"Fout bij opslaan positie {ticker}: {e}")
+        return False, str(e)

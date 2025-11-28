@@ -1,7 +1,10 @@
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash
 import os, logging, traceback, secrets
 import yfinance as yf
 from werkzeug.exceptions import HTTPException
+import pandas as pd # NIEUW: Nodig voor CSV verwerking
+import io # NIEUW: Nodig om bestanden te lezen
+
 from auth import (
     sign_up_user,
     sign_in_user,
@@ -18,11 +21,12 @@ from auth import (
     list_memberships_for_user,
     list_groups_by_ids,
     initialize_cash_position,
-    remove_member_from_group,  # NIEUW
-    delete_group,  # NIEUW
+    remove_member_from_group, 
+    delete_group, 
     add_cash_transaction,
     list_cash_transactions_for_group,
     get_cash_balance_for_group,
+    add_portfolio_position, # NIEUW: Geïmporteerd uit auth.py
 )
 import re
 
@@ -31,7 +35,6 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 logging.basicConfig(level=logging.INFO)
 
 # --- SUPABASE CONFIGURATIE ---
-# Vul hier jouw gegevens in, deze geven we door aan de HTML
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
 
@@ -377,7 +380,7 @@ def select_group(group_id):
 
     return redirect(url_for("group_dashboard"))
 
-# --- NIEUWE ROUTE: PORTFOLIO ---
+
 @app.route("/portfolio")
 def portfolio():
     if "user_id" not in session:
@@ -619,6 +622,87 @@ def remove_group_member(member_id: int):
     
     return redirect("/groups/current")
 
+# --- NIEUWE ROUTE VOOR CSV IMPORT ---
+@app.route("/group/<int:group_id>/import_csv", methods=["POST"])
+def import_csv(group_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    # Check of de gebruiker toegang heeft tot de groep
+    user_id = session["user_id"]
+    ok_membership, _ = get_membership_for_user_in_group(user_id, group_id)
+    if not ok_membership:
+        return redirect(url_for("portfolio"))
+
+    if 'file' not in request.files:
+        return redirect(url_for("portfolio"))
+
+    file = request.files['file']
+    
+    if file.filename == '':
+        return redirect(url_for("portfolio"))
+
+    if file:
+        try:
+            # 1. Lees het bestand in het geheugen
+            stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+            
+            # 2. Probeer CSV te lezen (ondersteunt ; en , als scheidingsteken)
+            # engine='python' en sep=None zorgt dat pandas zelf probeert te raden
+            try:
+                df = pd.read_csv(stream, sep=None, engine='python')
+            except:
+                # Fallback als auto-detectie faalt
+                stream.seek(0)
+                df = pd.read_csv(stream, sep=';')
+
+            # 3. Kolomnamen normaliseren (alles kleine letters, geen spaties)
+            df.columns = [c.lower().strip() for c in df.columns]
+            
+            # 4. Zoek de juiste kolommen (maakt niet uit hoe je broker ze noemt)
+            col_map = {
+                'ticker': ['ticker', 'symbol', 'symbool', 'product', 'isin'],
+                'amount': ['aantal', 'quantity', 'stuks', 'number'],
+                'price': ['price', 'prijs', 'koers', 'aankoopprijs', 'avg price', 'gem. aankoopprijs']
+            }
+
+            found_cols = {}
+            for key, options in col_map.items():
+                for opt in options:
+                    if opt in df.columns:
+                        found_cols[key] = opt
+                        break
+            
+            # Check of we alles gevonden hebben
+            if len(found_cols) == 3:
+                count = 0
+                for index, row in df.iterrows():
+                    ticker = str(row[found_cols['ticker']]).upper().strip()
+                    amount = row[found_cols['amount']]
+                    price = row[found_cols['price']]
+
+                    # Simpele validatie
+                    try:
+                        # Verwijder valuta tekens en maak getal
+                        if isinstance(amount, str): amount = float(amount.replace(',', '.').replace('€', '').strip())
+                        if isinstance(price, str): price = float(price.replace(',', '.').replace('€', '').strip())
+                        
+                        if ticker and pd.notna(amount) and amount > 0:
+                            # Opslaan in DB via auth.py functie
+                            add_portfolio_position(group_id, ticker, float(amount), float(price), user_id)
+                            count += 1
+                    except Exception as row_error:
+                        print(f"Skipping row {index}: {row_error}")
+
+                print(f"Succesvol {count} posities geïmporteerd.")
+            else:
+                print(f"Kon kolommen niet vinden. Gevonden: {df.columns}")
+
+        except Exception as e:
+            print(f"Fout bij CSV import: {e}")
+            logging.error(traceback.format_exc())
+
+    return redirect(url_for("portfolio"))
 
 
 if __name__ == "__main__":

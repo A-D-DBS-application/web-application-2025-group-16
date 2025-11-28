@@ -22,6 +22,9 @@
         .form-input:disabled { background: #f8fafc; color: #94a3b8; }
         .quote-pill { border: 1px dashed #cbd5f5; border-radius: 0.75rem; padding: 0.65rem 0.9rem; background: #f8fbff; font-weight: 600; color: #0f172a; }
         .btn-secondary { border: 1px solid #cbd5f5; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }
+        .btn-primary { background-color: #2563eb; color: white; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: background-color 0.2s; }
+        .btn-primary:hover { background-color: #1d4ed8; }
+        .btn-primary:disabled { background-color: #94a3b8; cursor: not-allowed; }
     </style>
 </head>
 <body class="text-slate-800">
@@ -113,12 +116,23 @@
                     <h2 class="text-xl font-bold text-slate-900">Voeg posities toe aan de actieve groep</h2>
                     <p class="text-slate-500 text-sm">Gebruik Yahoo Finance voor actuele koersen en details.</p>
                 </div>
-                {% if not active_group %}
-                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-sm">
-                    <i data-lucide="info" class="h-4 w-4"></i>
-                    Selecteer eerst een groep
-                </span>
-                {% endif %}
+                <div class="flex gap-2 items-center">
+                    {% if active_group %}
+                        <!-- CSV Import Form -->
+                        <form action="/group/{{ active_group.id }}/import_csv" method="post" enctype="multipart/form-data" id="csv-form" class="hidden">
+                            <input type="file" name="file" id="csv-file-input" accept=".csv" onchange="document.getElementById('csv-form').submit()">
+                        </form>
+                        <button onclick="document.getElementById('csv-file-input').click()" class="flex items-center gap-2 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full text-sm font-semibold hover:bg-slate-200 transition-colors text-slate-700">
+                            <i data-lucide="upload" class="h-4 w-4"></i>
+                            Import CSV
+                        </button>
+                    {% else %}
+                        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-sm">
+                            <i data-lucide="info" class="h-4 w-4"></i>
+                            Selecteer eerst een groep
+                        </span>
+                    {% endif %}
+                </div>
             </div>
 
             <form id="position-form" class="space-y-5">
