@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash, get_flashed_messages
 import os, logging, traceback, secrets
 import yfinance as yf
 from werkzeug.exceptions import HTTPException
-import pandas as pd # NIEUW: Nodig voor CSV verwerking
-import io # NIEUW: Nodig om bestanden te lezen
+import pandas as pd
+import io 
+import google.generativeai as genai
+import json
+import time # Nodig voor de pauze-functie
 
 from auth import (
     sign_up_user,
@@ -26,17 +29,91 @@ from auth import (
     add_cash_transaction,
     list_cash_transactions_for_group,
     get_cash_balance_for_group,
-    add_portfolio_position, # NIEUW: Geïmporteerd uit auth.py
+    add_portfolio_position,
 )
 import re
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super-secret-key-voor-dev-mode")
 logging.basicConfig(level=logging.INFO)
 
 # --- SUPABASE CONFIGURATIE ---
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
+
+# --- AI CONFIGURATIE (GEMINI) ---
+GOOGLE_API_KEY = "AIzaSyBk0oahchDJDCldvLqMQ-H_ZnKt_svOaKc" # Zorg dat hier je werkende sleutel staat!
+
+CURRENT_MODEL_NAME = "gemini-1.5-flash"
+
+# HULPFUNCTIE: Slimme AI aanroep met retry
+def generate_ai_content_safe(prompt, retries=3):
+    """Probeert AI aan te roepen. Bij drukte wacht hij even en probeert opnieuw."""
+    if not GOOGLE_API_KEY or "PLAK_HIER" in GOOGLE_API_KEY:
+        return "⚠️ Geen geldige API Key ingesteld."
+
+    try:
+        model = genai.GenerativeModel(CURRENT_MODEL_NAME)
+        
+        # Probeer het een paar keer als het druk is
+        for poging in range(retries):
+            try:
+                response = model.generate_content(prompt)
+                return response.text
+            except Exception as e:
+                # Als het een Quota error is (429)
+                error_str = str(e).lower()
+                if "429" in error_str or "quota" in error_str or "resource exhausted" in error_str:
+                    wait_time = (poging + 1) * 5 # Wacht 5, 10, 15 seconden...
+                    logging.warning(f"AI Quota bereikt. Wachten voor {wait_time} seconden en opnieuw proberen...")
+                    time.sleep(wait_time)
+                    continue # Probeer opnieuw
+                else:
+                    # Andere fout? Gooi hem dan direct op
+                    raise e
+        
+        return "⚠️ AI is momenteel te druk. Probeer het over een minuutje nog eens."
+        
+    except Exception as final_err:
+        logging.error(f"AI Definitieve Fout: {final_err}")
+        return f"Fout bij analyse: {str(final_err)}"
+
+
+# AUTOMATISCHE MODEL DETECTIE
+print("\n--- 🤖 AI INITIALISATIE... ---")
+if GOOGLE_API_KEY and "PLAK_HIER" not in GOOGLE_API_KEY:
+    try:
+        clean_key = GOOGLE_API_KEY.strip()
+        genai.configure(api_key=clean_key)
+        
+        print(f"Gebruikte Key (eerste 5 tekens): {clean_key[:5]}...")
+
+        # Probeer modellen te vinden
+        my_models = []
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    name = m.name.replace('models/', '')
+                    my_models.append(name)
+        except:
+            my_models = ['gemini-pro'] # Fallback
+
+        # Kies slim de beste
+        if 'gemini-1.5-flash' in my_models:
+            CURRENT_MODEL_NAME = 'gemini-1.5-flash'
+        elif 'gemini-pro' in my_models:
+            CURRENT_MODEL_NAME = 'gemini-pro'
+        elif len(my_models) > 0:
+            CURRENT_MODEL_NAME = my_models[0]
+            
+        print(f"✅ GESELECTEERD MODEL: {CURRENT_MODEL_NAME}")
+        
+    except Exception as e:
+        print(f"❌ FOUT BIJ AI STARTUP: {e}")
+else:
+    print("⚠️ Geen (geldige) API Key ingevuld in app.py.")
+print("-----------------------------\n")
+
 
 @app.route("/health")
 def health():
@@ -743,6 +820,76 @@ def import_csv(group_id):
             flash(f"Er ging iets mis bij het importeren: {str(e)}", "error")
 
     return redirect(url_for("portfolio"))
+
+# --- AI ROUTE 1: ANALYSEER LOS AANDEEL ---
+@app.route("/api/ai/analyze-stock", methods=["POST"])
+def ai_analyze_stock():
+    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
+    
+    data = request.get_json()
+    ticker = data.get("ticker", "").upper()
+    if not ticker: return jsonify({"error": "Geen ticker"}), 400
+
+    # Haal info op voor context
+    name = ticker
+    try:
+        t = yf.Ticker(ticker)
+        name = t.info.get("longName", ticker)
+    except: pass
+
+    prompt = f"""
+    Analyseer het financiële instrument: {ticker} ({name}).
+    Je antwoord moet in het Nederlands zijn en HTML geformatteerd (gebruik <h3>, <p>, <ul>, <li>).
+    
+    Geef antwoord op deze punten:
+    1. **Sector/Categorie**: Is dit een individueel aandeel of een ETF? Welke sector? (Zet dit duidelijk bovenaan).
+    2. **Bedrijfsanalyse**: Wat doet dit bedrijf/ETF? Wat zijn de sterke punten?
+    3. **Risico's**: Wat zijn de 2 grootste risico's?
+    4. **Conclusie**: Een korte conclusie (1 zin).
+    
+    Houd het beknopt en professioneel.
+    """
+    
+    # Gebruik de veilige functie met retry
+    result = generate_ai_content_safe(prompt)
+    return jsonify({"analysis": result})
+
+# --- AI ROUTE 2: ANALYSEER PORTEFEUILLE ---
+@app.route("/api/ai/analyze-portfolio", methods=["POST"])
+def ai_analyze_portfolio():
+    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
+    
+    data = request.get_json()
+    positions = data.get("positions", [])
+    if not positions: return jsonify({"error": "Lege portefeuille"}), 400
+
+    # Maak een samenvatting voor de AI
+    summary_list = []
+    for p in positions:
+        ticker = p.get('ticker')
+        if ticker == 'CASH': continue
+        summary_list.append(f"- {ticker}: {p.get('quantity')} stuks (Waarde: €{p.get('value', 0)})")
+    
+    summary_text = "\n".join(summary_list)
+
+    prompt = f"""
+    Je bent een financiële expert. Analyseer deze beleggingsportefeuille:
+    
+    {summary_text}
+    
+    Geef antwoord in het Nederlands, geformatteerd met HTML (gebruik <h3>, <p>, <ul>, <li>, <strong>).
+    
+    Focus op:
+    1. **Diversificatie**: Is er voldoende spreiding over sectoren en regio's?
+    2. **Risico**: Is de portefeuille offensief of defensief?
+    3. **Tips**: Geef 3 concrete, korte tips om deze portefeuille te verbeteren (bijv. "Overweeg meer tech" of "Te veel blootstelling aan VS").
+    
+    Houd het constructief en beknopt.
+    """
+    
+    # Gebruik de veilige functie met retry
+    result = generate_ai_content_safe(prompt)
+    return jsonify({"analysis": result})
 
 
 if __name__ == "__main__":

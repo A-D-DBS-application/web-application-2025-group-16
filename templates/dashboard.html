@@ -25,6 +25,13 @@
         .btn-primary { background-color: #2563eb; color: white; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: background-color 0.2s; }
         .btn-primary:hover { background-color: #1d4ed8; }
         .btn-primary:disabled { background-color: #94a3b8; cursor: not-allowed; }
+        
+        /* Markdown/HTML content styling in modal */
+        .prose h3 { font-size: 1.1rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #1e293b; }
+        .prose p { margin-bottom: 0.8rem; line-height: 1.5; color: #475569; }
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .prose li { margin-bottom: 0.25rem; color: #475569; }
+        .prose strong { color: #0f172a; font-weight: 600; }
     </style>
 </head>
 <body class="text-slate-800">
@@ -65,10 +72,20 @@
                 <h1 class="text-2xl font-bold text-slate-900">Overzicht per groep</h1>
                 <p class="text-slate-500 text-sm">Selecteer een groep om zijn portefeuille en rendement te bekijken.</p>
             </div>
-            <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
-                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                Verversen
-            </button>
+            
+            <div class="flex gap-2">
+                {% if active_group %}
+                <button id="ai-scan-btn" class="flex items-center gap-2 px-4 py-2 bg-purple-600 border border-purple-600 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors shadow-sm text-white">
+                    <i data-lucide="sparkles" class="h-4 w-4"></i>
+                    AI Portefeuille Scan
+                </button>
+                {% endif %}
+                
+                <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                    Verversen
+                </button>
+            </div>
         </div>
         
         <!-- FLUSH MESSAGES: Feedback van de server -->
@@ -371,6 +388,41 @@
         </div>
     </div>
 
+    <!-- AI Analysis Modal -->
+    <div id="ai-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Achtergrond overlay -->
+            <div class="fixed inset-0 transition-opacity bg-slate-900/75" aria-hidden="true" onclick="closeAiModal()"></div>
+
+            <!-- Modal Panel -->
+            <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 sm:mx-0 sm:h-10 sm:w-10">
+                            <i data-lucide="bot" class="h-6 w-6 text-purple-600"></i>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-slate-900" id="ai-modal-title">AI Analyse</h3>
+                            <div class="mt-4">
+                                <!-- Hier komt de AI content -->
+                                <div id="ai-content" class="text-sm text-slate-500 prose max-w-none">
+                                    <div class="flex justify-center py-8">
+                                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-slate-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm" onclick="closeAiModal()">
+                        Sluiten
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
         const eur = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
@@ -404,34 +456,87 @@
         const tradeStatusEl = document.getElementById('trade-status');
         const tradeSubmitBtn = document.getElementById('trade-submit');
         const tradeCloseButtons = document.querySelectorAll('[data-close-trade]');
+        const aiScanBtn = document.getElementById('ai-scan-btn');
+        const aiModal = document.getElementById('ai-modal');
+        const aiContent = document.getElementById('ai-content');
 
         const QUOTE_ENDPOINT = '/api/quote/';
         let lastQuote = null;
         let lastCashRow = null;
         let tradeContext = null;
+        let currentPortfolio = []; // Opslag voor AI portfolio scan
 
-        if (lookupBtn) {
-            lookupBtn.addEventListener('click', handleLookup);
-        }
-
-        if (positionForm) {
-            positionForm.addEventListener('submit', handlePositionSubmit);
-        }
-
-        if (cashAddBtn) {
-            cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
-        }
-        if (cashRemoveBtn) {
-            cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
-        }
-
-        if (tradeForm) {
-            tradeForm.addEventListener('submit', handleTradeSubmit);
-        }
-
+        if (lookupBtn) lookupBtn.addEventListener('click', handleLookup);
+        if (positionForm) positionForm.addEventListener('submit', handlePositionSubmit);
+        if (cashAddBtn) cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
+        if (cashRemoveBtn) cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
+        if (tradeForm) tradeForm.addEventListener('submit', handleTradeSubmit);
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
-
         document.addEventListener('click', handleTableAction);
+        if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
+
+        // --- AI LOGICA START ---
+        function openAiModal(title) {
+            if (document.getElementById('ai-modal-title')) {
+                document.getElementById('ai-modal-title').textContent = title;
+            }
+            aiContent.innerHTML = '<div class="flex flex-col items-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div><p class="text-slate-400">AI is aan het nadenken...</p></div>';
+            aiModal.classList.remove('hidden');
+        }
+
+        function closeAiModal() {
+            aiModal.classList.add('hidden');
+        }
+
+        async function analyzeStock(ticker) {
+            openAiModal(`Analyseer ${ticker}`);
+            try {
+                const response = await fetch('/api/ai/analyze-stock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                
+                aiContent.innerHTML = data.analysis; 
+            } catch (err) {
+                aiContent.innerHTML = `<p class="text-red-500">Fout bij analyse: ${err.message}</p>`;
+            }
+        }
+
+        async function runPortfolioAiScan() {
+            if (!currentPortfolio || currentPortfolio.length === 0) {
+                alert("Geen posities om te analyseren.");
+                return;
+            }
+            
+            // Filter cash eruit
+            const positions = currentPortfolio
+                .filter(p => p.ticker !== 'CASH')
+                .map(p => ({
+                    ticker: p.ticker,
+                    quantity: p.quantity,
+                    value: (p.quantity * p.current_price).toFixed(2)
+                }));
+
+            openAiModal("Portefeuille Scan");
+            
+            try {
+                const response = await fetch('/api/ai/analyze-portfolio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positions: positions })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                
+                aiContent.innerHTML = data.analysis;
+            } catch (err) {
+                aiContent.innerHTML = `<p class="text-red-500">Fout bij analyse: ${err.message}</p>`;
+            }
+        }
+        // --- AI LOGICA END ---
 
         async function fetchPortfolio() {
             try {
@@ -458,6 +563,7 @@
                     return fetchPortfolio();
                 }
 
+                currentPortfolio = data; // Opslaan voor AI
                 renderDashboard(data);
             } catch (err) {
                 console.error("Error:", err);
@@ -543,6 +649,9 @@
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div class="flex justify-end gap-2">
+                                <button type="button" class="p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 ai-analyze-stock" data-ticker="${attrTicker}" title="AI Analyse">
+                                    <i data-lucide="bot" class="h-5 w-5"></i>
+                                </button>
                                 <button type="button"
                                     class="buy-position px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"
                                     data-position-id="${rowId}"
@@ -571,6 +680,9 @@
                 `;
                 tbody.innerHTML += row;
             });
+            
+            // Re-init icons for new rows
+            lucide.createIcons();
 
             const totalGain = totalVal - totalCost;
             const gainPct = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
@@ -822,6 +934,15 @@
         }
 
         function handleTableAction(event) {
+            // Check voor AI knop
+            const aiBtn = event.target.closest('.ai-analyze-stock');
+            if (aiBtn) {
+                event.preventDefault();
+                const ticker = aiBtn.dataset.ticker;
+                if (ticker) analyzeStock(ticker);
+                return;
+            }
+
             if (!ACTIVE_GROUP_ID) return;
             const buyBtn = event.target.closest('.buy-position');
             if (buyBtn) {

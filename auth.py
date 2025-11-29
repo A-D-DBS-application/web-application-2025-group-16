@@ -438,7 +438,7 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
                 "quantity": new_qty, 
                 "avg_price": new_avg,
                 "current_price": price 
-            }).eq("id", current_row.get("id")).execute()
+            }).eq("port_id", current_row.get("port_id")).execute()
             
             logging.info(f"Updated {ticker}: Old Qty {old_qty} -> New Qty {new_qty}")
             
