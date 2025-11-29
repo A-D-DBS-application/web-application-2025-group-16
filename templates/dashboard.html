@@ -79,12 +79,18 @@
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
                     AI Portefeuille Scan
                 </button>
-                {% endif %}
-                
+
+                <!-- AANGEPASTE KNOP: Nu een link naar de backend update functie -->
+                <a href="/group/{{ active_group.id }}/refresh_prices" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                    Ververs Koersen
+                </a>
+                {% else %}
                 <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="refresh-cw" class="h-4 w-4"></i>
                     Verversen
                 </button>
+                {% endif %}
             </div>
         </div>
         

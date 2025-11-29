@@ -30,6 +30,7 @@ from auth import (
     list_cash_transactions_for_group,
     get_cash_balance_for_group,
     add_portfolio_position,
+    koersen_updater  # <--- TOEGEVOEGD: De functie om koersen te updaten
 )
 import re
 
@@ -819,6 +820,22 @@ def import_csv(group_id):
             logging.error(traceback.format_exc())
             flash(f"Er ging iets mis bij het importeren: {str(e)}", "error")
 
+    return redirect(url_for("portfolio"))
+
+# NIEUWE ROUTE: Koersen verversen
+@app.route("/group/<int:group_id>/refresh_prices", methods=["GET", "POST"])
+def refresh_prices(group_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # Roep de nieuwe functie in auth.py aan
+    ok, msg = koersen_updater(group_id)
+    
+    if ok:
+        flash(f"Koersen ververst: {msg}", "success")
+    else:
+        flash(f"Fout bij verversen: {msg}", "error")
+        
     return redirect(url_for("portfolio"))
 
 # --- AI ROUTE 1: ANALYSEER LOS AANDEEL ---
