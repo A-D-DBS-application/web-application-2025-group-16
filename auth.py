@@ -1,7 +1,14 @@
 import os
 from supabase import create_client, Client
 import logging
-import yfinance as yf # Zorg dat deze bovenaan staat!
+import requests
+try:
+    import yfinance as yf  # type: ignore
+    YFINANCE_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ yfinance niet geladen in auth.py ({e}); fallback actief.")
+    yf = None  # type: ignore
+    YFINANCE_AVAILABLE = False
 
 # --- CONFIGURATIE ---
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
@@ -23,6 +30,37 @@ GROUP_ROLE_COLUMN = "rol"
 
 PORTFOLIO_TABLE = "Portefeuille"
 CASH_TX_TABLE = "Kas"
+TRANSACTION_TABLE = "Transacties"
+
+def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR"):
+    """Logt een transactie in de Transacties tabel.
+
+    Vereiste kolommen (gepland): transactie_id (PK), datum_tr (timestamptz), aantal, ticker, type,
+    portefeuille_id, koers, wisselkoers, munt.
+    """
+    try:
+        if not portfolio_id and not ticker:
+            return False, "Portfolio ID of ticker vereist"
+        payload = {
+            "datum_tr": "now()",  # server-side timestamp
+            "aantal": amount,
+            "ticker": ticker,
+            "type": trade_type.upper(),
+            "portefeuille_id": portfolio_id,
+            "koers": price,
+            "wisselkoers": exchange_rate,
+            "munt": currency
+        }
+        # Supabase client: 'now()' als string wordt niet automatisch geëvalueerd; alternatief is omit en DB default.
+        # We laten datum_tr weg en vertrouwen op DEFAULT now() indien kolom zo is aangemaakt.
+        payload.pop("datum_tr")
+        response = supabase.table(TRANSACTION_TABLE).insert(payload).execute()
+        if response.data:
+            return True, response.data[0]
+        return False, "Insert mislukt"
+    except Exception as e:
+        logging.error(f"Transactie log fout: {e}")
+        return False, str(e)
 
 
 def _build_cash_payload(group_id, amount):
@@ -266,12 +304,10 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
         
         if existing.data and len(existing.data) > 0:
             current_row = existing.data[0]
+            # Geen gemiddelde aankoopprijs meer: we verhogen aantallen en houden avg_price op laatste prijs.
             old_qty = float(current_row.get("quantity") or 0)
-            old_avg = float(current_row.get("avg_price") or 0)
             new_qty = int(old_qty) + quantity_int
-            new_avg = price
-            if new_qty > 0:
-                new_avg = ((old_qty * old_avg) + (quantity_int * price)) / new_qty
+            new_avg = price  # houd simpel
             
             row_id = current_row.get("port_id") or current_row.get("id")
             if row_id:
@@ -287,7 +323,7 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
                 "ticker": ticker,
                 "name": ticker, 
                 "quantity": quantity_int,
-                "avg_price": price,
+                "avg_price": price,  # blijft vereist door schema maar gelijk aan current_price
                 "current_price": price,
                 "sector": "Onbekend", 
                 "transactiekost": 0
@@ -312,37 +348,43 @@ def koersen_updater(group_id):
         updated_count = 0
         for pos in positions:
             ticker = pos.get('ticker')
-            # Sla CASH en lege tickers over
             if not ticker or ticker == 'CASH':
                 continue
-                
-            try:
-                # Haal koers op
-                stock = yf.Ticker(ticker)
-                current_price = None
-                
-                # Probeer snelle info
-                if hasattr(stock, 'fast_info'):
-                    current_price = stock.fast_info.last_price
-                
-                # Fallback naar historie
-                if current_price is None:
-                    hist = stock.history(period="1d")
-                    if not hist.empty:
-                        current_price = float(hist['Close'].iloc[-1])
-                
-                # Update DB als prijs gevonden is
-                if current_price:
-                    row_id = pos.get('port_id') or pos.get('id')
-                    if row_id:
-                        supabase.table(PORTFOLIO_TABLE).update({
-                            "current_price": current_price
-                        }).eq("port_id", row_id).execute()
-                        updated_count += 1
-                        print(f"✅ {ticker} geupdate naar {current_price:.2f}")
-            except Exception as e:
-                print(f"⚠️ Kon koers voor {ticker} niet updaten: {e}")
-                continue
+
+            current_price = None
+            if YFINANCE_AVAILABLE and yf is not None:
+                try:
+                    stock = yf.Ticker(ticker)
+                    if hasattr(stock, 'fast_info'):
+                        current_price = getattr(stock.fast_info, 'last_price', None)
+                    if current_price is None:
+                        hist = stock.history(period="1d")
+                        if not hist.empty:
+                            current_price = float(hist['Close'].iloc[-1])
+                except Exception as e:
+                    print(f"⚠️ yfinance fout voor {ticker}: {e}; probeer HTTP.")
+
+            if current_price is None:
+                # HTTP fallback
+                try:
+                    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
+                    r = requests.get(url, timeout=5)
+                    jd = r.json()
+                    results = jd.get("quoteResponse", {}).get("result", [])
+                    if results:
+                        item = results[0]
+                        current_price = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
+                except Exception as e:
+                    print(f"⚠️ HTTP fallback fout voor {ticker}: {e}")
+
+            if current_price:
+                row_id = pos.get('port_id') or pos.get('id')
+                if row_id:
+                    supabase.table(PORTFOLIO_TABLE).update({
+                        "current_price": current_price
+                    }).eq("port_id", row_id).execute()
+                    updated_count += 1
+                    print(f"✅ {ticker} geupdate naar {current_price:.2f}")
                 
         return True, f"{updated_count} koersen succesvol bijgewerkt."
         

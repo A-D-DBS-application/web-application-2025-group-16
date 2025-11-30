@@ -1,12 +1,36 @@
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash, get_flashed_messages
 import os, logging, traceback, secrets
-import yfinance as yf
 from werkzeug.exceptions import HTTPException
 import pandas as pd
 import io 
-import google.generativeai as genai
 import json
-import time 
+import time
+import requests
+
+# Probeer yfinance te laden; faalt onder Python 3.14 i.v.m. protobuf.
+try:
+    import yfinance as yf  # type: ignore
+    YFINANCE_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ yfinance niet geladen ({e}); gebruik HTTP fallback.")
+    yf = None  # type: ignore
+    YFINANCE_AVAILABLE = False
+
+# Gemini import veilig maken voor Python 3.14; indien niet beschikbaar, fallback.
+try:
+    import google.generativeai as genai  # type: ignore
+    GENAI_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ google-generativeai niet geladen ({e}); AI uitgeschakeld.")
+    GENAI_AVAILABLE = False
+    class _GenAIFallback:  # minimalistische stub
+        def configure(self, **kwargs): pass
+        class GenerativeModel:
+            def __init__(self, *a, **kw): pass
+            def generate_content(self, prompt):
+                class R: text = "AI niet beschikbaar op deze Python versie."
+                return R()
+    genai = _GenAIFallback()
 
 from auth import (
     sign_up_user,
@@ -31,12 +55,15 @@ from auth import (
     get_cash_balance_for_group,
     add_portfolio_position,
     koersen_updater
+    , log_portfolio_transaction, supabase
 )
 import re
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super-secret-key-voor-dev-mode")
 logging.basicConfig(level=logging.INFO)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 # --- SUPABASE CONFIGURATIE ---
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
@@ -54,12 +81,73 @@ if GOOGLE_API_KEY and "PLAK_HIER" not in GOOGLE_API_KEY:
         print("✅ AI Geconfigureerd (Klaar voor gebruik)")
     except Exception as e:
         print(f"⚠️ AI Configuratiefout: {e}")
+    
+@app.route("/debug/template-info")
+def debug_template_info():
+    try:
+        path = os.path.join(os.path.dirname(__file__), 'templates', 'dashboard.html')
+        stat = os.stat(path)
+        return jsonify({
+            "template_path": path,
+            "modified": stat.st_mtime,
+            "size": stat.st_size
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # HULPFUNCTIE: Slimme AI aanroep
 def generate_ai_content_safe(prompt, retries=1):
     """Probeert AI aan te roepen. Bij drukte wacht hij kort."""
+    if not GENAI_AVAILABLE:
+        return "⚠️ AI niet beschikbaar op deze Python versie."
     if not GOOGLE_API_KEY or "PLAK_HIER" in GOOGLE_API_KEY:
         return "⚠️ Geen geldige API Key ingesteld."
+def _http_quote(symbol: str):
+    """Fallback via Yahoo Finance HTTP API (geen yfinance nodig)."""
+    try:
+        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        results = data.get("quoteResponse", {}).get("result", [])
+        if not results:
+            return None
+        item = results[0]
+        price = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
+        return {
+            "symbol": item.get("symbol") or symbol,
+            "longName": item.get("longName"),
+            "shortName": item.get("shortName"),
+            "sector": item.get("sector"),  # Vaak None in deze endpoint
+            "regularMarketPrice": price,
+        }
+    except Exception as e:
+        logging.debug(f"HTTP quote fout voor {symbol}: {e}")
+        return None
+
+def _safe_quote(symbol: str):
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return None
+    if YFINANCE_AVAILABLE and yf is not None:
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.get_info() or {}
+            fast = getattr(ticker, "fast_info", None) or {}
+            price = info.get("regularMarketPrice") or info.get("currentPrice") or fast.get("last_price")
+            if price is None:
+                hist = ticker.history(period="1d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+            return {
+                "symbol": info.get("symbol") or symbol,
+                "longName": info.get("longName"),
+                "shortName": info.get("shortName"),
+                "sector": info.get("sector"),
+                "regularMarketPrice": price,
+            }
+        except Exception as e:
+            logging.debug(f"yfinance quote fout voor {symbol}: {e}; fallback HTTP.")
+    return _http_quote(symbol)
 
     try:
         model = genai.GenerativeModel(CURRENT_MODEL_NAME)
@@ -361,31 +449,64 @@ def cashbox():
     ok_bal, balance = get_cash_balance_for_group(group_id)
     return render_template("cashbox.html", balance=balance if ok_bal else 0.0, history=history if ok_hist else [], error=error)
 
+@app.route("/transactions")
+def transactions_page():
+    if "user_id" not in session: return redirect(url_for("login"))
+    membership = _current_group_membership()
+    if not membership: return redirect(url_for("home"))
+    group_id = membership["group_id"]
+    # Haal transacties op door join op portefeuille_id voor naam/ticker (optioneel)
+    try:
+        tx_res = supabase.table("Transacties").select("transactie_id, datum_tr, aantal, ticker, type, portefeuille_id, koers, wisselkoers, munt")\
+            .order("datum_tr", desc=True).execute()
+        transactions = tx_res.data or []
+    except Exception as e:
+        transactions = []
+    return render_template("transactions.html", transactions=transactions)
+
+@app.route("/api/transactions/log", methods=["POST"])
+def api_log_transaction():
+    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
+    data = request.get_json() or {}
+    portfolio_id = data.get("portefeuille_id")
+    ticker = (data.get("ticker") or "").upper().strip()
+    trade_type = (data.get("type") or "").upper().strip()
+    amount = float(data.get("aantal") or 0)
+    price = float(data.get("koers") or 0)
+    exchange_rate = float(data.get("wisselkoers") or 1)
+    currency = (data.get("munt") or "EUR").upper()
+    if not trade_type or trade_type not in ("BUY", "SELL", "DIVIDEND", "FEE"):
+        return jsonify({"error": "Ongeldig type"}), 400
+    if not ticker:
+        return jsonify({"error": "Ticker vereist"}), 400
+    if amount <= 0 or price <= 0:
+        return jsonify({"error": "Aantal en prijs moeten > 0 zijn"}), 400
+    # Resolve portfolio_id by current group + ticker if missing
+    try:
+        if not portfolio_id and ticker:
+            membership = _current_group_membership()
+            if membership and membership.get("group_id"):
+                gid = membership["group_id"]
+                lookup = supabase.table("Portefeuille").select("port_id").eq("groep_id", gid).eq("ticker", ticker).limit(1).execute()
+                if lookup.data:
+                    portfolio_id = lookup.data[0].get("port_id")
+    except Exception as e:
+        # continue without portfolio_id if lookup fails; DB may allow NULL
+        app.logger.warning(f"Kon port_id niet vinden voor {ticker}: {e}")
+    ok, res = log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate, currency)
+    if not ok:
+        return jsonify({"error": res}), 400
+    return jsonify({"transaction": res})
+
 
 @app.route("/api/quote/<symbol>")
 def yahoo_quote(symbol: str):
-    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
-    symbol = (symbol or "").strip().upper()
-    try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.get_info() or {}
-        fast = getattr(ticker, "fast_info", None) or {}
-        price = info.get("regularMarketPrice") or info.get("currentPrice") or fast.get("last_price")
-        
-        if price is None:
-            hist = ticker.history(period="1d")
-            if not hist.empty: price = float(hist["Close"].iloc[-1])
-
-        if price is None: return jsonify({"error": "Niet gevonden"}), 404
-
-        return jsonify({
-            "symbol": info.get("symbol") or symbol,
-            "longName": info.get("longName"),
-            "shortName": info.get("shortName"),
-            "sector": info.get("sector"),
-            "regularMarketPrice": price,
-        })
-    except: return jsonify({"error": "Fout bij ophalen"}), 502
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+    data = _safe_quote(symbol)
+    if not data or data.get("regularMarketPrice") is None:
+        return jsonify({"error": "Niet gevonden"}), 404
+    return jsonify(data)
 
 @app.route("/leden")
 def leden():
@@ -532,10 +653,16 @@ def ai_analyze_stock():
 
     # Haal info op voor context
     name = ticker
-    try:
-        t = yf.Ticker(ticker)
-        name = t.info.get("longName", ticker)
-    except: pass
+    if YFINANCE_AVAILABLE and yf is not None:
+        try:
+            t = yf.Ticker(ticker)
+            name = t.info.get("longName", ticker)
+        except Exception:
+            pass
+    else:
+        http_q = _http_quote(ticker)
+        if http_q and http_q.get("longName"):
+            name = http_q.get("longName")
 
     prompt = f"""
     Analyseer het financiële instrument: {ticker} ({name}).

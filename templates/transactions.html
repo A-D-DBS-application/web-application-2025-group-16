@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Transacties</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800">
+    <nav class="bg-white border-b border-slate-200 mb-6">
+        <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div class="font-bold text-lg">InvestClub</div>
+            <div class="flex gap-4 text-sm">
+                <a href="/home" class="text-slate-600 hover:text-blue-600">Home</a>
+                <a href="/cash" class="text-slate-600 hover:text-blue-600">Kas</a>
+                <a href="/portfolio" class="text-slate-600 hover:text-blue-600">Portefeuille</a>
+                <a href="/transactions" class="text-blue-600 font-semibold">Transacties</a>
+                <a href="/logout" class="text-rose-600 hover:text-rose-700">Uitloggen</a>
+            </div>
+        </div>
+    </nav>
+    <main class="max-w-6xl mx-auto px-4 pb-16">
+        <h1 class="text-2xl font-bold mb-4">Transactie-overzicht</h1>
+        <p class="text-slate-500 text-sm mb-6">Historiek van uitgevoerde portefeuille transacties.</p>
+        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-slate-600 uppercase text-xs">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Datum</th>
+                        <th class="px-4 py-3 text-left">Type</th>
+                        <th class="px-4 py-3 text-left">Ticker</th>
+                        <th class="px-4 py-3 text-right">Aantal</th>
+                        <th class="px-4 py-3 text-right">Koers</th>
+                        <th class="px-4 py-3 text-right">Waarde (€)</th>
+                        <th class="px-4 py-3 text-left">Munt</th>
+                        <th class="px-4 py-3 text-right">Wisselkoers</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                {% if transactions and transactions|length > 0 %}
+                    {% for tx in transactions %}
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-4 py-2">{{ tx.datum_tr or tx.created_at or '' }}</td>
+                        <td class="px-4 py-2 font-semibold {{ 'text-emerald-600' if tx.type=='BUY' else 'text-rose-600' if tx.type=='SELL' else 'text-slate-600' }}">{{ tx.type }}</td>
+                        <td class="px-4 py-2">{{ tx.ticker }}</td>
+                        <td class="px-4 py-2 text-right">{{ tx.aantal }}</td>
+                        <td class="px-4 py-2 text-right">€ {{ '%.2f'|format(tx.koers) }}</td>
+                        <td class="px-4 py-2 text-right">€ {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) * (tx.wisselkoers or 1)) }}</td>
+                        <td class="px-4 py-2">{{ tx.munt or 'EUR' }}</td>
+                        <td class="px-4 py-2 text-right">{{ tx.wisselkoers or 1 }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" class="px-4 py-6 text-center text-slate-400">Geen transacties gevonden.</td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+</body>
+</html>

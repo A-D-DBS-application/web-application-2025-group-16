@@ -48,7 +48,9 @@
                 </div>
                 <div class="flex gap-6 text-sm font-medium">
                     <a href="/home" class="text-slate-500 hover:text-blue-600 transition-colors">Home</a>
+                    <a href="/cash" class="text-slate-500 hover:text-blue-600 transition-colors">Kas</a>
                     <a href="/portfolio" class="text-blue-600">Portefeuille</a>
+                    <a href="/transactions" class="text-slate-500 hover:text-blue-600 transition-colors">Transacties</a>
                     <a href="/logout" class="text-red-500 hover:text-red-700 transition-colors">Uitloggen</a>
                 </div>
             </div>
@@ -79,11 +81,16 @@
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
                     AI Portefeuille Scan
                 </button>
+                
 
                 <!-- AANGEPASTE KNOP: Nu een link naar de backend update functie -->
                 <a href="/group/{{ active_group.id }}/refresh_prices" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="refresh-cw" class="h-4 w-4"></i>
                     Ververs Koersen
+                </a>
+                <a href="/transactions" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                    <i data-lucide="list" class="h-4 w-4"></i>
+                    Transacties
                 </a>
                 {% else %}
                 <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
@@ -194,14 +201,10 @@
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-3 gap-4">
+                <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label class="form-label">Gem. aankoopprijs (€)</label>
-                        <input id="avg-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
-                    </div>
-                    <div>
-                        <label class="form-label">Laatste koers</label>
-                        <div id="quote-price" class="quote-pill">—</div>
+                        <label class="form-label">Laatste koers (wijzigbaar)</label>
+                        <input id="quote-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                     <div>
                         <label class="form-label">Sector</label>
@@ -440,12 +443,12 @@
 
         const tickerInput = document.getElementById('ticker-input');
         const quantityInput = document.getElementById('quantity-input');
-        const avgPriceInput = document.getElementById('avg-price-input');
+        // Gemiddelde aankoopprijs verwijderd: we gebruiken enkel de huidige koers.
         const lookupBtn = document.getElementById('lookup-ticker');
         const positionForm = document.getElementById('position-form');
         const quoteNameEl = document.getElementById('quote-name');
         const quoteSectorEl = document.getElementById('quote-sector');
-        const quotePriceEl = document.getElementById('quote-price');
+        const quotePriceInput = document.getElementById('quote-price-input');
         const formStatusEl = document.getElementById('form-status');
         const transactionCostInput = document.getElementById('transaction-cost-input');
         const cashAdjustInput = document.getElementById('cash-adjust-input');
@@ -480,6 +483,19 @@
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
         document.addEventListener('click', handleTableAction);
         if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
+
+        // Helpers voor CASH herkenning
+        function isCashRow(row) {
+            return ((row && row.ticker) ? String(row.ticker) : '').toUpperCase() === 'CASH';
+        }
+
+        function findCashRow(rows) {
+            if (!Array.isArray(rows)) return null;
+            for (const r of rows) {
+                if (isCashRow(r)) return r;
+            }
+            return null;
+        }
 
         // --- AI LOGICA START ---
         function openAiModal(title) {
@@ -614,12 +630,12 @@
             positions.forEach(item => {
                 const qty = item.quantity || 0;
                 const price = item.current_price || 0;
-                const avg = item.avg_price || 0;
+                const avg = item.current_price || item.avg_price || 0; // avg fallback verwijderd; gebruiken huidige koers
                 const fee = Number(item.transactiekost) || 0;
                 const val = qty * price;
-                const cost = qty * avg + fee;
+                const cost = qty * avg + fee; // cost gebaseerd op huidige prijs (geen historische gemiddelde)
                 const gain = val - cost;
-                const rowId = item.id ?? item.ID ?? item.portefeuille_id ?? '';
+                const rowId = item.port_id ?? item.id ?? item.ID ?? item.portefeuille_id ?? '';
                 
                 const sectorName = item.sector ? item.sector : "Overig";
                 
@@ -784,17 +800,19 @@
         }
 
         function updateQuoteSummary(quote) {
-            if (!quoteNameEl || !quotePriceEl || !quoteSectorEl) return;
+            if (!quoteNameEl || !quotePriceInput || !quoteSectorEl) return;
             quoteNameEl.textContent = quote.longName || quote.shortName || quote.symbol || '—';
             quoteSectorEl.textContent = quote.sector || 'Onbekend';
-            const price = quote.regularMarketPrice || quote.postMarketPrice || null;
-            quotePriceEl.textContent = price ? eur.format(price) : '—';
+            const rawPrice = quote.regularMarketPrice || quote.postMarketPrice || null;
+            if (rawPrice != null) {
+                quotePriceInput.value = rawPrice.toFixed(2);
+            }
         }
 
         function clearQuoteSummary() {
             if (quoteNameEl) quoteNameEl.textContent = '—';
             if (quoteSectorEl) quoteSectorEl.textContent = '—';
-            if (quotePriceEl) quotePriceEl.textContent = '—';
+            if (quotePriceInput) quotePriceInput.value = '';
             lastQuote = null;
         }
 
@@ -813,9 +831,7 @@
                 const quote = await fetchQuote(symbol);
                 lastQuote = quote;
                 updateQuoteSummary(quote);
-                if (avgPriceInput && !avgPriceInput.value) {
-                    avgPriceInput.value = quote.regularMarketPrice || '';
-                }
+                // Gemiddelde aankoopprijs niet meer ingevuld; alleen koers tonen.
                 setFormStatus('Quote geladen. Vul aantallen in en sla op.', 'success');
             } catch (err) {
                 clearQuoteSummary();
@@ -838,13 +854,16 @@
                 setFormStatus('Selecteer eerst een groep', 'error');
                 return;
             }
-            if (!tickerInput || !quantityInput || !avgPriceInput) {
+            if (!tickerInput || !quantityInput) {
                 setFormStatus('Formulier niet volledig geladen', 'error');
                 return;
             }
             const symbol = (tickerInput.value || '').trim().toUpperCase();
             const qty = parseFloat(quantityInput.value || '0');
-            let avgPrice = parseFloat(avgPriceInput.value || '0');
+            // Gemiddelde aankoopprijs niet meer gebruikt; we nemen de huidige koers als basis.
+            // Gebruik manueel ingegeven koers indien beschikbaar, anders laatst opgehaalde.
+            let overridePrice = parseFloat(quotePriceInput?.value || '0');
+            let avgPrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
             let transactionCost = parseFloat(transactionCostInput?.value || '0');
 
             if (!symbol) {
@@ -860,11 +879,8 @@
                 return;
             }
             if (!avgPrice || avgPrice <= 0) {
-                avgPrice = lastQuote?.regularMarketPrice || 0;
-                if (!avgPrice) {
-                    setFormStatus('Geef een aankoopprijs op of laad een quote', 'error');
-                    return;
-                }
+                setFormStatus('Laad eerst een koers (Zoek).', 'error');
+                return;
             }
             if (isNaN(transactionCost) || transactionCost < 0) {
                 transactionCost = 0;
@@ -882,7 +898,7 @@
                 return;
             }
 
-            const priceNow = lastQuote?.regularMarketPrice ?? avgPrice;
+            const priceNow = avgPrice; // we gebruiken de ingegeven / laatst bekende koers voor zowel avg als current
             const positionName = lastQuote?.longName || lastQuote?.shortName || symbol;
             const sector = lastQuote?.sector || 'Onbekend';
 
@@ -903,23 +919,42 @@
                 setFormStatus(error.message || 'Opslaan mislukt', 'error');
                 return;
             }
+            const insertedPortId = insertData?.[0]?.port_id || insertData?.[0]?.id || null;
 
             const nextCash = cashAvailable - totalCost;
             const cashUpdateOk = await updateCashBalance(nextCash);
             if (!cashUpdateOk) {
-                const insertedId = insertData?.[0]?.id;
+                const insertedId = insertedPortId;
                 if (insertedId) {
                     await supabase
                         .from('Portefeuille')
                         .delete()
                         .eq('groep_id', ACTIVE_GROUP_ID)
-                        .eq('id', insertedId);
+                        .eq('port_id', insertedId);
                 }
                 setFormStatus('Cash bijwerken mislukt. Probeer opnieuw.', 'error');
                 return;
             }
 
             if (lastCashRow) lastCashRow.current_price = nextCash;
+            // Log initiële aankoop van positie
+            try {
+                await fetch('/api/transactions/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'BUY',
+                        ticker: symbol,
+                        aantal: qty,
+                        koers: priceNow,
+                        wisselkoers: 1,
+                        munt: 'EUR',
+                        portefeuille_id: insertedPortId
+                    })
+                });
+            } catch (e) {
+                console.warn('Log initiële aankoop mislukt', e);
+            }
             setFormStatus('Positie opgeslagen', 'success');
             if (positionForm) positionForm.reset();
             clearQuoteSummary();
@@ -1014,7 +1049,7 @@
 
         function applyPositionFilter(query) {
             if (tradeContext?.positionId) {
-                return query.eq('id', tradeContext.positionId);
+                return query.eq('port_id', tradeContext.positionId);
             }
             return query.eq('ticker', tradeContext?.ticker || '');
         }
@@ -1110,6 +1145,12 @@
             if (lastCashRow) {
                 lastCashRow.current_price = newCash;
             }
+            // Log transactie
+            await logTrade({ type: 'BUY', ticker: tradeContext.ticker, aantal: qty, koers: price });
+            // Eenvoudig: log FEE als transactiekost > 0
+            if (fee && fee > 0) {
+                await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
+            }
         }
 
         async function processSell(qty, price, fee) {
@@ -1167,14 +1208,73 @@
             if (lastCashRow) {
                 lastCashRow.current_price = newCash;
             }
+            await logTrade({ type: 'SELL', ticker: tradeContext.ticker, aantal: qty, koers: price });
+            // Eenvoudig: log FEE als transactiekost > 0
+            if (fee && fee > 0) {
+                await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
+            }
+            // Eenvoudig: log initiële BUY en FEE (indien transactiekost > 0)
+            try {
+                await fetch('/api/transactions/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'BUY',
+                        ticker: symbol,
+                        aantal: qty,
+                        koers: priceNow,
+                        wisselkoers: 1,
+                        munt: 'EUR',
+                        portefeuille_id: insertedPortId
+                    })
+                });
+                if (transactionCost && transactionCost > 0) {
+                    await fetch('/api/transactions/log', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'FEE',
+                            ticker: symbol,
+                            aantal: 1,
+                            koers: transactionCost,
+                            wisselkoers: 1,
+                            munt: 'EUR',
+                            portefeuille_id: insertedPortId
+                        })
+                    });
+                }
+            } catch (e) {
+                console.warn('Transactie/fee logging mislukt', e);
+            }
         }
 
-        function isCashRow(row) {
-            return (row?.ticker || '').toUpperCase() === 'CASH';
-        }
-
-        function findCashRow(rows) {
-            return rows.find(isCashRow) || null;
+        async function logTrade(details) {
+            try {
+                const body = {
+                    type: details.type,
+                    ticker: details.ticker,
+                    aantal: details.aantal,
+                    koers: details.koers,
+                    wisselkoers: 1,
+                    munt: 'EUR',
+                    portefeuille_id: tradeContext?.positionId || null
+                };
+                const resp = await fetch('/api/transactions/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!resp.ok) {
+                    try {
+                        const msg = await resp.text();
+                        console.warn('Transactie log mislukt:', resp.status, msg);
+                    } catch (e) {
+                        console.warn('Transactie log mislukt:', resp.status);
+                    }
+                }
+            } catch (e) {
+                console.debug('Transactie log mislukt', e);
+            }
         }
 
         function updateCashCard(amount) {
