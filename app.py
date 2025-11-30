@@ -454,15 +454,27 @@ def transactions_page():
     if "user_id" not in session: return redirect(url_for("login"))
     membership = _current_group_membership()
     if not membership: return redirect(url_for("home"))
-    group_id = membership["group_id"]
-    # Haal transacties op door join op portefeuille_id voor naam/ticker (optioneel)
+    current_group_id = membership["group_id"]
+    # Optionele filters: group_id en/of port_id via querystring
+    q_group_id = request.args.get("group_id", type=int)
+    q_port_id = request.args.get("port_id", type=int)
+    group_id = q_group_id or current_group_id
     try:
-        tx_res = supabase.table("Transacties").select("transactie_id, datum_tr, aantal, ticker, type, portefeuille_id, koers, wisselkoers, munt")\
-            .order("datum_tr", desc=True).execute()
+        query = supabase.table("Transacties").select("transactie_id, datum_tr, aantal, ticker, type, portefeuille_id, koers, wisselkoers, munt").order("datum_tr", desc=True)
+        # Filter op specifieke portefeuille
+        if q_port_id:
+            query = query.eq("portefeuille_id", q_port_id)
+        # Filter op groep: via join-achtige filter door portefeuille_id set van deze groep op te halen
+        elif group_id:
+            ports = supabase.table("Portefeuille").select("port_id").eq("groep_id", group_id).execute()
+            port_ids = [row.get("port_id") for row in (ports.data or []) if row.get("port_id") is not None]
+            if port_ids:
+                query = query.in_("portefeuille_id", port_ids)
+        tx_res = query.execute()
         transactions = tx_res.data or []
     except Exception as e:
         transactions = []
-    return render_template("transactions.html", transactions=transactions)
+    return render_template("transactions.html", transactions=transactions, group_id=group_id, port_id=q_port_id)
 
 @app.route("/api/transactions/log", methods=["POST"])
 def api_log_transaction():

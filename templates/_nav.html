@@ -1,0 +1,15 @@
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+    <a href="/home" class="flex items-center gap-2 font-bold text-slate-900">
+      <span>InvestClub</span>
+    </a>
+    {% set p = request.path %}
+    <div class="flex gap-6 text-sm font-medium">
+      <a href="/home" class="{{ 'text-blue-600 font-semibold' if p.startswith('/home') or p=='/' else 'text-slate-600 hover:text-blue-600' }}">Home</a>
+      <a href="/cash" class="{{ 'text-blue-600 font-semibold' if p.startswith('/cash') else 'text-slate-600 hover:text-blue-600' }}">Kas</a>
+      <a href="/portfolio" class="{{ 'text-blue-600 font-semibold' if p.startswith('/portfolio') else 'text-slate-600 hover:text-blue-600' }}">Portefeuille</a>
+      <a href="/transactions" class="{{ 'text-blue-600 font-semibold' if p.startswith('/transactions') else 'text-slate-600 hover:text-blue-600' }}">Transacties</a>
+      <a href="/logout" class="text-rose-600 hover:text-rose-700">Uitloggen</a>
+    </div>
+  </div>
+</nav>
