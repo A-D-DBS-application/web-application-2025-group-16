@@ -119,6 +119,7 @@ def _http_quote(symbol: str):
             "shortName": item.get("shortName"),
             "sector": item.get("sector"),  # Vaak None in deze endpoint
             "regularMarketPrice": price,
+            "currency": item.get("currency") or item.get("financialCurrency") or item.get("marketCurrency")
         }
     except Exception as e:
         logging.debug(f"HTTP quote fout voor {symbol}: {e}")
@@ -144,6 +145,7 @@ def _safe_quote(symbol: str):
                 "shortName": info.get("shortName"),
                 "sector": info.get("sector"),
                 "regularMarketPrice": price,
+                "currency": info.get("currency") or info.get("financialCurrency") or fast.get("last_price_currency") or fast.get("currency")
             }
         except Exception as e:
             logging.debug(f"yfinance quote fout voor {symbol}: {e}; fallback HTTP.")

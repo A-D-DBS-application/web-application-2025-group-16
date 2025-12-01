@@ -165,6 +165,23 @@
             </div>
 
             <form id="position-form" class="space-y-5">
+                <div class="grid md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="form-label">Transactie</label>
+                        <select id="transaction-type" class="form-input">
+                            <option value="BUY">Aankoop</option>
+                            <option value="SELL">Verkoop</option>
+                            <option value="DIVIDEND">Dividend</option>
+                            <option value="TRANSFER">Overschrijving</option>
+                            <option value="PAYOUT">Uitbetaling effecten</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <div id="txn-placeholder" class="hidden quote-pill text-slate-400">Velden voor deze transactie verschijnen hier.</div>
+                    </div>
+                </div>
+
+                <div id="buy-section">
                 <div class="grid md:grid-cols-2 gap-4">
                     <div>
                         <label class="form-label">Ticker</label>
@@ -182,7 +199,7 @@
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-2 gap-4">
+                <div class="grid md:grid-cols-3 gap-4">
                     <div>
                         <label class="form-label">Laatste koers (wijzigbaar)</label>
                         <input id="quote-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
@@ -190,6 +207,23 @@
                     <div>
                         <label class="form-label">Sector</label>
                         <div id="quote-sector" class="quote-pill">—</div>
+                    </div>
+                    <div>
+                        <label class="form-label">Munt</label>
+                        <input id="currency-input" list="currency-list" class="form-input" placeholder="Bijv. EUR" maxlength="6" {{ builder_disabled }}>
+                        <datalist id="currency-list">
+                            <option value="EUR"></option>
+                            <option value="USD"></option>
+                            <option value="GBP"></option>
+                            <option value="CHF"></option>
+                            <option value="CAD"></option>
+                            <option value="JPY"></option>
+                            <option value="SEK"></option>
+                            <option value="NOK"></option>
+                            <option value="PLN"></option>
+                            <option value="DKK"></option>
+                        </datalist>
+                        <div id="currency-hint" class="text-[11px] mt-1 text-slate-400">Automatisch gevuld vanuit Yahoo Finance; overschrijf indien nodig (2–6 letters).</div>
                     </div>
                 </div>
 
@@ -209,10 +243,11 @@
                 </div>
 
                 <div class="flex justify-end">
-                    <button type="submit" class="btn-primary" {{ builder_disabled }}>
+                    <button type="submit" id="position-submit" class="btn-primary" {{ builder_disabled }}>
                         <i data-lucide="plus-circle" class="h-4 w-4"></i>
-                        Positie opslaan
+                        Transactie opslaan
                     </button>
+                </div>
                 </div>
             </form>
         </div>
@@ -427,9 +462,14 @@
         // Gemiddelde aankoopprijs verwijderd: we gebruiken enkel de huidige koers.
         const lookupBtn = document.getElementById('lookup-ticker');
         const positionForm = document.getElementById('position-form');
+        const txnTypeSelect = document.getElementById('transaction-type');
+        const txnPlaceholder = document.getElementById('txn-placeholder');
+        const buySection = document.getElementById('buy-section');
+        const positionSubmitBtn = document.getElementById('position-submit');
         const quoteNameEl = document.getElementById('quote-name');
         const quoteSectorEl = document.getElementById('quote-sector');
         const quotePriceInput = document.getElementById('quote-price-input');
+        const currencyInput = document.getElementById('currency-input');
         const formStatusEl = document.getElementById('form-status');
         const transactionCostInput = document.getElementById('transaction-cost-input');
         const cashAdjustInput = document.getElementById('cash-adjust-input');
@@ -458,6 +498,10 @@
 
         if (lookupBtn) lookupBtn.addEventListener('click', handleLookup);
         if (positionForm) positionForm.addEventListener('submit', handlePositionSubmit);
+        if (txnTypeSelect) txnTypeSelect.addEventListener('change', updateTransactionUI);
+        if (currencyInput) currencyInput.addEventListener('input', () => {
+            currencyInput.value = currencyInput.value.toUpperCase();
+        });
         if (cashAddBtn) cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
         if (cashRemoveBtn) cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
         if (tradeForm) tradeForm.addEventListener('submit', handleTradeSubmit);
@@ -540,6 +584,34 @@
             }
         }
         // --- AI LOGICA END ---
+
+        function updateTransactionUI() {
+            const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
+            const labelMap = {
+                'BUY': 'Aankoop',
+                'SELL': 'Verkoop',
+                'DIVIDEND': 'Dividend',
+                'TRANSFER': 'Overschrijving',
+                'PAYOUT': 'Uitbetaling effecten'
+            };
+            if (t === 'BUY') {
+                buySection?.classList.remove('hidden');
+                txnPlaceholder?.classList.add('hidden');
+                if (positionSubmitBtn) positionSubmitBtn.disabled = false;
+                setFormStatus('Zoek een ticker om details te laden', 'info');
+            } else {
+                buySection?.classList.add('hidden');
+                if (txnPlaceholder) {
+                    txnPlaceholder.textContent = `Velden voor "${labelMap[t] || t}" komen hier.`;
+                    txnPlaceholder.classList.remove('hidden');
+                }
+                if (positionSubmitBtn) positionSubmitBtn.disabled = true;
+                setFormStatus('Dit transactietype volgt later.', 'info');
+            }
+        }
+        // Verwijderd aparte select/custom logica; één invoerveld met datalist.
+        // Init
+        updateTransactionUI();
 
         async function fetchPortfolio() {
             try {
@@ -795,6 +867,14 @@
             if (rawPrice != null) {
                 quotePriceInput.value = rawPrice.toFixed(2);
             }
+            if (currencyInput) {
+                const qcur = (quote.currency || '').toUpperCase();
+                if (qcur) {
+                    currencyInput.value = qcur;
+                } else if (!currencyInput.value) {
+                    currencyInput.value = 'EUR';
+                }
+            }
         }
 
         function clearQuoteSummary() {
@@ -838,6 +918,11 @@
 
         async function handlePositionSubmit(event) {
             event.preventDefault();
+            const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
+            if (t !== 'BUY') {
+                setFormStatus('Dit transactietype is nog niet actief.', 'info');
+                return;
+            }
             if (!ACTIVE_GROUP_ID) {
                 setFormStatus('Selecteer eerst een groep', 'error');
                 return;
@@ -853,6 +938,11 @@
             let overridePrice = parseFloat(quotePriceInput?.value || '0');
             let avgPrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
             let transactionCost = parseFloat(transactionCostInput?.value || '0');
+            let selectedCurrency = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+            if (!selectedCurrency.match(/^[A-Z]{2,6}$/)) {
+                setFormStatus('Ongeldige munt (2–6 letters)', 'error');
+                return;
+            }
 
             if (!symbol) {
                 setFormStatus('Geef een ticker op', 'error');
@@ -995,7 +1085,7 @@
                         aantal: qty,
                         koers: priceNow,
                         wisselkoers: 1,
-                        munt: 'EUR',
+                        munt: selectedCurrency,
                         portefeuille_id: insertedPortId
                     })
                 });
@@ -1010,7 +1100,7 @@
                             aantal: 1,
                             koers: transactionCost,
                             wisselkoers: 1,
-                            munt: 'EUR',
+                            munt: selectedCurrency,
                             portefeuille_id: insertedPortId
                         })
                     });
@@ -1285,13 +1375,17 @@
 
         async function logTrade(details) {
             try {
+                let cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+                if (!cur.match(/^[A-Z]{2,6}$/)) {
+                    cur = 'EUR';
+                }
                 const body = {
                     type: details.type,
                     ticker: details.ticker,
                     aantal: details.aantal,
                     koers: details.koers,
                     wisselkoers: 1,
-                    munt: 'EUR',
+                    munt: cur,
                     portefeuille_id: tradeContext?.positionId || null
                 };
                 const resp = await fetch('/api/transactions/log', {
