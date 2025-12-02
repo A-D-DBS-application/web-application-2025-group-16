@@ -77,7 +77,7 @@ SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
 
 # --- AI CONFIGURATIE (GEMINI) ---
-GOOGLE_API_KEY = "AIzaSyAqqipgLx7gWeLO7hKc81X1zEu5grJPFD4"
+GOOGLE_API_KEY = "AIzaSyBQAqLcif1kxasTI2zBy13f20PRkeS3KOU"
 CURRENT_MODEL_NAME = "gemini-2.0-flash"
 
 # We configureren alleen, we roepen NIETS aan bij het opstarten.
