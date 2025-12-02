@@ -1,11 +1,18 @@
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify, flash, get_flashed_messages
 import os, logging, traceback, secrets
 from werkzeug.exceptions import HTTPException
+from flask import jsonify, request, session
+import traceback # Nodig om de echte fout te zien
 import pandas as pd
 import io 
 import json
 import time
 import requests
+
+import os # Deze staat waarschijnlijk al bovenaan, maar voor de zekerheid
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") 
+
+
 
 # Probeer yfinance te laden; faalt onder Python 3.14 i.v.m. protobuf.
 try:
@@ -70,8 +77,8 @@ SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
 
 # --- AI CONFIGURATIE (GEMINI) ---
-GOOGLE_API_KEY = "AIzaSyAZg1iH9D4oPxzR6mq3RbjUerfmNvZxYCg"
-CURRENT_MODEL_NAME = "gemini-1.5-flash"
+GOOGLE_API_KEY = "AIzaSyAqqipgLx7gWeLO7hKc81X1zEu5grJPFD4"
+CURRENT_MODEL_NAME = "gemini-2.0-flash"
 
 # We configureren alleen, we roepen NIETS aan bij het opstarten.
 # Dit voorkomt dat je limiet opraakt door het herstarten van Flask.
@@ -95,85 +102,38 @@ def debug_template_info():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# HULPFUNCTIE: Slimme AI aanroep
+# --- HULPFUNCTIE: Slimme AI aanroep (VERBETERDE VERSIE) ---
 def generate_ai_content_safe(prompt, retries=1):
-    """Probeert AI aan te roepen. Bij drukte wacht hij kort."""
+    """Probeert AI aan te roepen. Geeft altijd een string terug, nooit None."""
+    
+    # 1. Check of library er is
     if not GENAI_AVAILABLE:
-        return "⚠️ AI niet beschikbaar op deze Python versie."
+        return "⚠️ AI library niet geladen. Run: pip install google-generativeai"
+    
+    # 2. Check of API key er is
     if not GOOGLE_API_KEY or "PLAK_HIER" in GOOGLE_API_KEY:
         return "⚠️ Geen geldige API Key ingesteld."
-def _http_quote(symbol: str):
-    """Fallback via Yahoo Finance HTTP API (geen yfinance nodig)."""
-    try:
-        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        results = data.get("quoteResponse", {}).get("result", [])
-        if not results:
-            return None
-        item = results[0]
-        price = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
-        return {
-            "symbol": item.get("symbol") or symbol,
-            "longName": item.get("longName"),
-            "shortName": item.get("shortName"),
-            "sector": item.get("sector"),  # Vaak None in deze endpoint
-            "regularMarketPrice": price,
-            "currency": item.get("currency") or item.get("financialCurrency") or item.get("marketCurrency")
-        }
-    except Exception as e:
-        logging.debug(f"HTTP quote fout voor {symbol}: {e}")
-        return None
-
-def _safe_quote(symbol: str):
-    symbol = (symbol or "").strip().upper()
-    if not symbol:
-        return None
-    if YFINANCE_AVAILABLE and yf is not None:
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.get_info() or {}
-            fast = getattr(ticker, "fast_info", None) or {}
-            price = info.get("regularMarketPrice") or info.get("currentPrice") or fast.get("last_price")
-            if price is None:
-                hist = ticker.history(period="1d")
-                if not hist.empty:
-                    price = float(hist["Close"].iloc[-1])
-            return {
-                "symbol": info.get("symbol") or symbol,
-                "longName": info.get("longName"),
-                "shortName": info.get("shortName"),
-                "sector": info.get("sector"),
-                "regularMarketPrice": price,
-                "currency": info.get("currency") or info.get("financialCurrency") or fast.get("last_price_currency") or fast.get("currency")
-            }
-        except Exception as e:
-            logging.debug(f"yfinance quote fout voor {symbol}: {e}; fallback HTTP.")
-    return _http_quote(symbol)
 
     try:
         model = genai.GenerativeModel(CURRENT_MODEL_NAME)
         
-        # We proberen het max 2 keer (oorspronkelijk + 1 retry)
-        # Minder retries = minder kans op vastlopen in een loop
-        for poging in range(retries + 1):
-            try:
-                response = model.generate_content(prompt)
-                return response.text
-            except Exception as e:
-                error_str = str(e).lower()
-                if "429" in error_str or "quota" in error_str or "503" in error_str:
-                    if poging < retries:
-                        time.sleep(2) # Korte pauze
-                        continue
-                
-                logging.error(f"AI Fout: {e}")
-                return f"⚠️ AI even niet beschikbaar ({CURRENT_MODEL_NAME}). Probeer later."
+        # 3. Aanroep naar Google
+        # We gebruiken time.sleep niet direct om vertraging te voorkomen, alleen bij retries als je dat zou willen.
+        response = model.generate_content(prompt)
         
-        return "⚠️ AI is te druk. Probeer het over een minuutje nog eens."
+        # 4. Check of er tekst in het antwoord zit
+        if response and hasattr(response, 'text') and response.text:
+            return response.text
+        else:
+            return "⚠️ AI gaf een leeg antwoord terug (mogelijk safety filter)."
+            
+    except Exception as e:
+        # Vang specifieke Google fouten op
+        error_msg = str(e)
+        if "429" in error_msg or "quota" in error_msg.lower():
+             return "⚠️ AI limiet bereikt (Quota exceeded). Probeer later."
         
-    except Exception as final_err:
-        return f"Systeemfout bij AI: {str(final_err)}"
+        return f"⚠️ AI Fout: {error_msg}"
 
 
 @app.route("/health")
@@ -656,43 +616,62 @@ def refresh_prices(group_id):
         
     return redirect(url_for("portfolio"))
 
-# --- AI ROUTE 1: ANALYSEER LOS AANDEEL ---
+# --- AI ROUTE 1: ANALYSEER LOS AANDEEL (DEFINITIEVE FIX) ---
 @app.route("/api/ai/analyze-stock", methods=["POST"])
 def ai_analyze_stock():
-    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
+    if "user_id" not in session: 
+        return jsonify({"error": "Niet ingelogd"}), 401
     
-    data = request.get_json()
-    ticker = data.get("ticker", "").upper()
-    if not ticker: return jsonify({"error": "Geen ticker"}), 400
+    try:
+        data = request.get_json()
+        ticker = data.get("ticker", "").upper()
+        if not ticker: return jsonify({"error": "Geen ticker"}), 400
 
-    # Haal info op voor context
-    name = ticker
-    if YFINANCE_AVAILABLE and yf is not None:
+        # Context ophalen
+        name = ticker
+        price_info = "Onbekend"
         try:
-            t = yf.Ticker(ticker)
-            name = t.info.get("longName", ticker)
-        except Exception:
-            pass
-    else:
-        http_q = _http_quote(ticker)
-        if http_q and http_q.get("longName"):
-            name = http_q.get("longName")
+            quote_data = _safe_quote(ticker)
+            if quote_data:
+                name = quote_data.get("longName") or ticker
+                if quote_data.get("regularMarketPrice"):
+                    price_info = f"{quote_data.get('regularMarketPrice')} {quote_data.get('currency', 'EUR')}"
+        except: pass
 
-    prompt = f"""
-    Analyseer het financiële instrument: {ticker} ({name}).
-    Je antwoord moet in het Nederlands zijn en HTML geformatteerd (gebruik <h3>, <p>, <ul>, <li>).
-    
-    Geef antwoord op deze punten:
-    1. **Sector/Categorie**: Is dit een individueel aandeel of een ETF? Welke sector?
-    2. **Bedrijfsanalyse**: Wat doet dit bedrijf/ETF? Sterke punten?
-    3. **Risico's**: Wat zijn de grootste risico's?
-    4. **Conclusie**: Een korte conclusie.
-    
-    Houd het professioneel.
-    """
-    
-    result = generate_ai_content_safe(prompt)
-    return jsonify({"analysis": result})
+        prompt = f"""
+        Je bent een senior financieel analist. Maak een "One-Pager" analyse voor: {ticker} ({name}). 
+        Huidige prijs: {price_info}.
+        
+        Gebruik HTML (geen markdown). Tailwind classes: font-bold, text-slate-800, list-disc, mb-2.
+        
+        Structuur:
+        1. <h3>Samenvatting</h3>: Koop/Houd/Verkoop advies.
+        2. <h3>Bedrijf</h3>: Wat doen ze?
+        3. <h3>Bull Case</h3>: 3 redenen om te kopen (<ul>).
+        4. <h3>Bear Case</h3>: 3 risico's (<ul>).
+        5. <h3>Conclusie</h3>: Eindoordeel.
+        """
+
+        # DEZE REGEL VEROORZAAKTE DE CRASH:
+        result = generate_ai_content_safe(prompt)
+
+        # FIX: Check of result daadwerkelijk tekst bevat
+        if not result:
+            return jsonify({"error": "Geen resultaat van AI functie."}), 500
+            
+        # Check op foutmeldingen die beginnen met ⚠️
+        if result.startswith("⚠️"):
+             return jsonify({"error": result}), 503
+
+        # Nu is het veilig om replace te doen
+        clean_result = result.replace("```html", "").replace("```", "")
+        
+        return jsonify({"analysis": clean_result})
+
+    except Exception as e:
+        print("!!! AI CRASH !!!")
+        traceback.print_exc()
+        return jsonify({"error": f"Technische Fout: {str(e)}"}), 500
 
 # --- AI ROUTE 2: ANALYSEER PORTEFEUILLE ---
 @app.route("/api/ai/analyze-portfolio", methods=["POST"])
@@ -703,28 +682,38 @@ def ai_analyze_portfolio():
     positions = data.get("positions", [])
     if not positions: return jsonify({"error": "Lege portefeuille"}), 400
 
+    # Data voorbereiden voor de AI
     summary_list = []
+    total_val = 0
     for p in positions:
         ticker = p.get('ticker')
         if ticker == 'CASH': continue
-        summary_list.append(f"- {ticker}: {p.get('quantity')} stuks (Waarde: €{p.get('value', 0)})")
+        try:
+            val = float(p.get('value', 0))
+        except: val = 0
+        total_val += val
+        summary_list.append(f"- {ticker}: €{val:.2f}")
     
     summary_text = "\n".join(summary_list)
 
     prompt = f"""
-    Je bent een financiële expert. Analyseer deze beleggingsportefeuille:
+    Je bent een vermogensbeheerder. Analyseer deze portefeuille met een totale waarde van ca. €{total_val:.2f}.
     
+    Posities:
     {summary_text}
     
-    Geef antwoord in het Nederlands, geformatteerd met HTML.
-    Focus op:
-    1. **Diversificatie**: Spreiding over sectoren/regio's?
-    2. **Risico**: Offensief of defensief?
-    3. **Tips**: 3 concrete verbeterpunten.
+    Geef een kritische analyse in het Nederlands. Antwoord in HTML (gebruik Tailwind classes zoals text-slate-600, font-bold, etc.).
+    
+    Onderdelen:
+    1. **Diversificatie Score (1-10)**: Hoe goed is de spreiding over sectoren en geografie? Leg uit waarom.
+    2. **Risicoprofiel**: Is dit defensief, neutraal of zeer offensief?
+    3. **Blootstelling**: Benadruk als er een te grote concentratie is in één sector (bijv. Tech) of één aandeel.
+    4. **Actiepunten**: 3 concrete tips om deze portefeuille te verbeteren (bijv. "Overweeg meer defensieve aandelen toe te voegen" of "Neem winst op X").
     """
     
     result = generate_ai_content_safe(prompt)
-    return jsonify({"analysis": result})
+    clean_result = result.replace("```html", "").replace("```", "")
+    return jsonify({"analysis": clean_result})
 
 
 if __name__ == "__main__":
