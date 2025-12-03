@@ -8,6 +8,13 @@ import io
 import json
 import time
 import requests
+from dotenv import load_dotenv
+import yfinance as yf
+
+
+
+load_dotenv()
+
 
 import os # Deze staat waarschijnlijk al bovenaan, maar voor de zekerheid
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") 
@@ -79,8 +86,9 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
 
+
 # --- AI CONFIGURATIE (GEMINI) ---
-GOOGLE_API_KEY = "AIzaSyBQAqLcif1kxasTI2zBy13f20PRkeS3KOU"
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 CURRENT_MODEL_NAME = "gemini-2.0-flash"
 
 # We configureren alleen, we roepen NIETS aan bij het opstarten.
@@ -104,6 +112,33 @@ def debug_template_info():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/quote/<ticker>')
+def get_quote(ticker):
+    try:
+        # Haal data op via Yahoo Finance
+        stock = yf.Ticker(ticker)
+        
+        # We gebruiken fast_info of info afhankelijk van beschikbaarheid
+        # Dit haalt de meest recente prijs op
+        price = stock.fast_info.last_price if hasattr(stock, 'fast_info') else stock.info.get('currentPrice')
+        
+        # Haal overige info op (naam, sector, valuta)
+        info = stock.info
+        
+        data = {
+            'symbol': ticker.upper(),
+            'longName': info.get('longName') or info.get('shortName') or ticker,
+            'sector': info.get('sector', 'Onbekend'),
+            'currency': info.get('currency', 'EUR'),
+            'regularMarketPrice': price
+        }
+        
+        return jsonify(data)
+    except Exception as e:
+        print(f"Fout bij ophalen quote: {e}")
+        # Stuur een JSON error terug in plaats van HTML
+        return jsonify({'error': 'Ticker niet gevonden of API fout'}), 404
 
 # --- HULPFUNCTIE: Slimme AI aanroep (VERBETERDE VERSIE) ---
 def generate_ai_content_safe(prompt, retries=1):

@@ -914,13 +914,21 @@
 
         async function fetchQuote(symbol) {
             const response = await fetch(`${QUOTE_ENDPOINT}${encodeURIComponent(symbol)}`);
+            
+            // Check of de server wel JSON teruggeeft
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Server error: Route niet gevonden of server crash (HTML ontvangen).");
+            }
+
             const payload = await response.json();
             if (!response.ok) {
                 throw new Error(payload?.error || 'Quote niet beschikbaar');
             }
             return payload;
         }
-
+    
+       
         async function handlePositionSubmit(event) {
             event.preventDefault();
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
