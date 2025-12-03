@@ -86,6 +86,7 @@
                 {% endif %}
             </div>
         </div>
+        
 
         <!-- Acties voor groep beheer -->
         {% if is_owner %}
@@ -102,6 +103,40 @@
                 </button>
             </div>
         </div>
+        {% if is_owner and requests and requests|length > 0 %}
+<div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+    <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
+        <i data-lucide="inbox" class="h-5 w-5 text-blue-500"></i>
+        Lid-aanvragen
+    </h2>
+
+        {% for r in requests %}
+        <div class="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50">
+            <div>
+                <p class="font-semibold text-slate-900">
+                    {{ r.full_name }} 
+                    {% if r.type == 'join' %}
+                        wil lid worden van de groep
+                    {% elif r.type == 'leave' %}
+                        wil de groep verlaten
+                    {% else %}
+                        heeft een verzoek ingediend
+                    {% endif %}
+                </p>
+
+            </div>
+
+        <form method="POST" action="/groups/requests/{{ r.id }}/approve">
+            <button type="submit"
+                class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium text-sm">
+                Goedkeuren
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 
         <!-- Modal voor groep verwijderen -->
         <div id="deleteGroupModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

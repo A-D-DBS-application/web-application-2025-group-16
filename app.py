@@ -62,7 +62,10 @@ from auth import (
     get_cash_balance_for_group,
     add_portfolio_position,
     koersen_updater
-    , log_portfolio_transaction, supabase
+    , log_portfolio_transaction, supabase,
+    create_group_request,
+    list_group_requests_for_group,
+    approve_group_request,
 )
 import re
 
@@ -322,27 +325,47 @@ def create_group():
 
 @app.route("/groups/join", methods=["GET", "POST"])
 def join_group():
-    if "user_id" not in session: return redirect(url_for("login"))
+    if "user_id" not in session: 
+        return redirect(url_for("login"))
+
     error = None
     code_value = ""
 
     if request.method == "POST":
         code_value = (request.form.get("code") or "").strip().upper()
+
         if not code_value:
             error = "Vul een uitnodigingscode in."
+
         else:
             ok_group, group_response = get_group_by_code(code_value)
-            if not ok_group: error = group_response
-            elif not group_response: error = "Onbekende code."
+
+            if not ok_group:
+                error = group_response
+
+            elif not group_response:
+                error = "Onbekende code."
+
             else:
-                _leave_current_group()
-                add_member_to_group(group_response["id"], session["user_id"], role="member")
-                session["group_id"] = group_response["id"]
-                session["group_code"] = group_response.get("invite_code")
-                initialize_cash_position(group_response["id"], amount=0)
-                return redirect(url_for("group_dashboard"))
+                # NIEUWE code: aanvraag aanmaken i.p.v. direct join
+                create_group_request(group_response["id"], session["user_id"], "join")
+                flash("Aanvraag verstuurd! Wacht op goedkeuring door de host.", "info")
+                return redirect(url_for("home"))
 
     return render_template("group_join.html", error=error, code_value=code_value)
+
+
+@app.route("/groups/requests/<int:req_id>/approve", methods=["POST"])
+def approve_request(req_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    ok, msg = approve_group_request(req_id, session["user_id"])
+
+    flash(msg, "success" if ok else "error")
+
+    return redirect(url_for("group_dashboard"))
+
 
 
 @app.route("/groups/current")
@@ -354,6 +377,10 @@ def group_dashboard():
         return redirect(url_for("home"))
 
     member_profiles = _resolve_member_profiles(member_rows)
+    # NIEUW: openstaande aanvragen ophalen
+    ok_req, requests = list_group_requests_for_group(group_data["id"])
+    requests = requests or []
+
     group_context = {
         "id": group_data["id"],
         "name": group_data["name"],
@@ -364,7 +391,33 @@ def group_dashboard():
         "owner_id": group_data.get("owner_id"),
     }
     is_owner = session.get("user_id") == group_data.get("owner_id")
-    return render_template("group.html", group=group_context, members=member_profiles, is_owner=is_owner, error=load_error)
+    # Pending requests ophalen
+    ok_reqs, req_rows = list_group_requests_for_group(group_data["id"])
+    requests = []
+
+    if ok_reqs and req_rows:
+        # Haal leden data op
+        ok_leden, leden_data = list_leden()
+        lookup = {u.get("ledenid"): u for u in leden_data} if ok_leden else {}
+
+        for r in req_rows:
+            user = lookup.get(r.get("ledenid"), {})
+            full_name = f"{user.get('voornaam','')} {user.get('achternaam','')}".strip() or f"Lid {r.get('ledenid')}"
+            
+            requests.append({
+                "id": r.get("id"),
+                "full_name": full_name,
+                "type": r.get("type"),
+            })
+    return render_template(
+    "group.html",
+    group=group_context,
+    members=member_profiles,
+    is_owner=is_owner,
+    requests=requests,
+    error=load_error
+)
+
 
 
 @app.route("/groups/select/<int:group_id>", methods=["POST"])
@@ -528,12 +581,25 @@ def handle_any_exception(e):
 
 @app.route("/groups/leave", methods=["POST"])
 def leave_group():
-    if "user_id" not in session: return redirect(url_for("login"))
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
     group_id = session.get("group_id")
-    if group_id:
-        remove_member_from_group(group_id, session["user_id"])
-        _leave_current_group()
+
+    if not group_id:
+        return redirect(url_for("home"))
+
+    # NIEUWE code: leave-aanvraag aanmaken
+    create_group_request(group_id, session["user_id"], "leave")
+
+    # Feedback naar user
+    flash("Uitstapaanvraag verstuurd! Wacht op goedkeuring door de host.", "info")
+
+    # Niet direct uit groep verwijderen!
+    # _leave_current_group() wordt pas uitgevoerd na goedkeuring
+
     return redirect(url_for("home"))
+
 
 @app.route("/groups/delete", methods=["POST"])
 def delete_group_route():

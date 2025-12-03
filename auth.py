@@ -195,6 +195,54 @@ def add_member_to_group(group_id, ledenid, role="member"):
     except Exception as e:
         return False, str(e)
 
+def create_group_request(group_id, ledenid, type):
+    try:
+        payload = {
+            "groep_id": group_id,
+            "ledenid": ledenid,
+            "type": type,
+            "status": "pending"
+        }
+        res = supabase.table("groepsaanvragen").insert(payload).execute()
+        return True, "Aanvraag verstuurd"
+    except Exception as e:
+        return False, str(e)
+
+def list_group_requests_for_group(group_id):
+    try:
+        res = supabase.table("groepsaanvragen").select("*").eq("groep_id", group_id).eq("status", "pending").execute()
+        return True, res.data
+    except Exception as e:
+        return False, str(e)
+
+def approve_group_request(req_id, host_id):
+    try:
+        # aanvraag ophalen
+        res = supabase.table("groepsaanvragen").select("*").eq("id", req_id).limit(1).execute()
+        if not res.data:
+            return False, "Aanvraag niet gevonden"
+
+        r = res.data[0]
+
+        # type logica
+        if r["type"] == "join":
+            add_member_to_group(r["groep_id"], r["ledenid"], "member")
+
+        elif r["type"] == "leave":
+            remove_member_from_group(r["groep_id"], r["ledenid"])
+
+        # aanvraag markeren als afgehandeld
+        supabase.table("groepsaanvragen").update({
+            "status": "approved",
+            "processed_by": host_id
+        }).eq("id", req_id).execute()
+
+        return True, "Goedgekeurd"
+
+    except Exception as e:
+        return False, str(e)
+
+
 def initialize_cash_position(group_id, amount=0.0):
     try:
         existing = supabase.table(PORTFOLIO_TABLE).select("port_id", "current_price").eq("groep_id", group_id).eq("ticker", "CASH").limit(1).execute()
