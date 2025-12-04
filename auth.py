@@ -32,7 +32,7 @@ PORTFOLIO_TABLE = "Portefeuille"
 CASH_TX_TABLE = "Kas"
 TRANSACTION_TABLE = "Transacties"
 
-def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR"):
+def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR", datum_tr=None):
     """Logt een transactie in de Transacties tabel.
 
     Vereiste kolommen (gepland): transactie_id (PK), datum_tr (timestamptz), aantal, ticker, type,
@@ -41,8 +41,21 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
     try:
         if not portfolio_id and not ticker:
             return False, "Portfolio ID of ticker vereist"
+        # Normaliseer of vul datum_tr in (fallback: vandaag 00:00:00Z)
+        dt_value = None
+        try:
+            s = (datum_tr or "").strip()
+            if not s:
+                from datetime import date
+                s = date.today().isoformat()  # YYYY-MM-DD
+            if len(s) == 10 and s[4] == '-' and s[7] == '-':
+                dt_value = s + "T00:00:00Z"
+            else:
+                dt_value = s
+        except Exception:
+            dt_value = None
+
         payload = {
-            "datum_tr": "now()",  # server-side timestamp
             "aantal": amount,
             "ticker": ticker,
             "type": trade_type.upper(),
@@ -51,9 +64,9 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
             "wisselkoers": exchange_rate,
             "munt": currency
         }
-        # Supabase client: 'now()' als string wordt niet automatisch geëvalueerd; alternatief is omit en DB default.
-        # We laten datum_tr weg en vertrouwen op DEFAULT now() indien kolom zo is aangemaakt.
-        payload.pop("datum_tr")
+        # Datum altijd meesturen om NOT NULL te vermijden
+        if dt_value:
+            payload["datum_tr"] = dt_value
         response = supabase.table(TRANSACTION_TABLE).insert(payload).execute()
         if response.data:
             return True, response.data[0]
@@ -425,14 +438,50 @@ def koersen_updater(group_id):
                 except Exception as e:
                     print(f"⚠️ HTTP fallback fout voor {ticker}: {e}")
 
-            if current_price:
+            # Bepaal munt en wisselkoers op basis van laatste transactie voor deze ticker
+            currency = None
+            try:
+                tx = supabase.table(TRANSACTION_TABLE).select("munt,ticker").eq("ticker", ticker).order("datum_tr", desc=True).limit(1).execute()
+                if tx and tx.data:
+                    currency = (tx.data[0].get("munt") or "").upper() or None
+            except Exception:
+                currency = None
+
+            fx_rate = None
+            if currency and currency != "EUR":
+                try:
+                    pair = f"EUR{currency}=X"
+                    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={pair}"
+                    r = requests.get(url, timeout=5)
+                    jd = r.json()
+                    results = jd.get("quoteResponse", {}).get("result", [])
+                    if results:
+                        item = results[0]
+                        fx_rate = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
+                        if fx_rate is not None:
+                            fx_rate = float(fx_rate)
+                except Exception as e:
+                    print(f"⚠️ FX fetch fout voor {ticker} ({currency}): {e}")
+            elif currency == "EUR":
+                fx_rate = 1.0
+
+            # Update positie met prijs en eventuele wisselkoers
+            if current_price or fx_rate is not None:
                 row_id = pos.get('port_id') or pos.get('id')
                 if row_id:
-                    supabase.table(PORTFOLIO_TABLE).update({
-                        "current_price": current_price
-                    }).eq("port_id", row_id).execute()
+                    payload = {}
+                    if current_price:
+                        payload["current_price"] = current_price
+                    if fx_rate is not None:
+                        payload["wisselkoers"] = fx_rate
+                    supabase.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
                     updated_count += 1
-                    print(f"✅ {ticker} geupdate naar {current_price:.2f}")
+                    msg_parts = []
+                    if current_price:
+                        msg_parts.append(f"prijs {current_price:.2f}")
+                    if fx_rate is not None:
+                        msg_parts.append(f"WK {fx_rate:.4f}")
+                    print(f"✅ {ticker} geupdate: {', '.join(msg_parts)}")
                 
         return True, f"{updated_count} koersen succesvol bijgewerkt."
         

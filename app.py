@@ -81,6 +81,34 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super-secret-key-voor-dev-m
 logging.basicConfig(level=logging.INFO)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+# SQLAlchemy configuratie (optioneel; vereist DATABASE_URL of SUPABASE_DB_URL)
+try:
+    from flask_sqlalchemy import SQLAlchemy
+    from sqlalchemy import func
+
+    def _normalize_db_url(raw: str | None) -> str | None:
+        if not raw:
+            return None
+        url = raw.strip()
+        # Force psycopg2 driver for SQLAlchemy
+        if url.startswith("postgresql://"):
+            url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+        # Ensure SSL for Supabase
+        if "sslmode=" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}sslmode=require"
+        return url
+
+    db_uri_raw = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+    db_uri = _normalize_db_url(db_uri_raw)
+    if db_uri:
+        app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
+        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+        db = SQLAlchemy(app)
+    else:
+        db = None
+except Exception as _e:
+    db = None
 
 # --- SUPABASE CONFIGURATIE ---
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
@@ -139,6 +167,32 @@ def get_quote(ticker):
         print(f"Fout bij ophalen quote: {e}")
         # Stuur een JSON error terug in plaats van HTML
         return jsonify({'error': 'Ticker niet gevonden of API fout'}), 404
+
+@app.route('/api/fx/<cur>')
+def get_fx_rate(cur: str):
+    """Return EUR->currency exchange rate (units of <cur> per 1 EUR)."""
+    try:
+        code = (cur or '').strip().upper()
+        if not code or len(code) < 3:
+            return jsonify({'error': 'Ongeldige munt'}), 400
+        if code == 'EUR':
+            return jsonify({'currency': 'EUR', 'pair': 'EUREUR=X', 'rate': 1.0})
+        symbol = f"EUR{code}=X"
+        stock = yf.Ticker(symbol)
+        price = None
+        try:
+            price = stock.fast_info.last_price if hasattr(stock, 'fast_info') else None
+        except Exception:
+            price = None
+        if price is None:
+            info = getattr(stock, 'info', {})
+            price = info.get('regularMarketPrice') or info.get('bid') or info.get('ask')
+        if price is None:
+            return jsonify({'error': 'FX niet beschikbaar'}), 404
+        return jsonify({'currency': code, 'pair': symbol, 'rate': float(price)})
+    except Exception as e:
+        print(f"Fout bij FX: {e}")
+        return jsonify({'error': 'FX fout'}), 500
 
 # --- HULPFUNCTIE: Slimme AI aanroep (VERBETERDE VERSIE) ---
 def generate_ai_content_safe(prompt, retries=1):
@@ -555,7 +609,10 @@ def api_log_transaction():
     except Exception as e:
         # continue without portfolio_id if lookup fails; DB may allow NULL
         app.logger.warning(f"Kon port_id niet vinden voor {ticker}: {e}")
-    ok, res = log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate, currency)
+    # Datum vanuit UI doorgeven aan backend payload
+    raw_date = (data.get("datum_tr") or "").strip()
+    datum_payload = raw_date if raw_date else None
+    ok, res = log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate, currency, datum_payload)
     if not ok:
         return jsonify({"error": res}), 400
     return jsonify({"transaction": res})
@@ -565,10 +622,125 @@ def api_log_transaction():
 def yahoo_quote(symbol: str):
     if "user_id" not in session:
         return jsonify({"error": "Niet ingelogd"}), 401
+    # Minimal quote via Yahoo Finance HTTP to avoid undefined helper
+    try:
+        r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}", timeout=8)
+        j = r.json()
+        q = (j.get("quoteResponse", {}) or {}).get("result", [])
+        if not q:
+            return jsonify({"error": "Niet gevonden"}), 404
+        item = q[0]
+        data = {
+            "symbol": item.get("symbol"),
+            "longName": item.get("longName") or item.get("shortName"),
+            "regularMarketPrice": item.get("regularMarketPrice"),
+            "currency": item.get("currency"),
+        }
+        if data.get("regularMarketPrice") is None:
+            return jsonify({"error": "Niet gevonden"}), 404
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": "Quote fout", "details": str(e)}), 500
     data = _safe_quote(symbol)
     if not data or data.get("regularMarketPrice") is None:
         return jsonify({"error": "Niet gevonden"}), 404
     return jsonify(data)
+
+# --- MODELLEN (alleen actief indien SQLAlchemy geconfigureerd) ---
+if db:
+    class Portefeuille(db.Model):
+        __tablename__ = 'Portefeuille'
+        port_id = db.Column(db.Integer, primary_key=True)
+        groep_id = db.Column(db.Integer, nullable=False)
+        ticker = db.Column(db.String(32), nullable=False)
+        quantity = db.Column(db.Float)
+        avg_price = db.Column(db.Float)
+        current_price = db.Column(db.Float)
+        transactiekost = db.Column(db.Float)
+
+    class Transacties(db.Model):
+        __tablename__ = 'Transacties'
+        transactie_id = db.Column(db.Integer, primary_key=True)
+        datum_tr = db.Column(db.DateTime)
+        aantal = db.Column(db.Float, nullable=False)
+        ticker = db.Column(db.String(32), nullable=False)
+        type = db.Column(db.String(16), nullable=False)
+        portefeuille_id = db.Column(db.Integer, db.ForeignKey('Portefeuille.port_id'))
+        koers = db.Column(db.Float, nullable=False)
+        wisselkoers = db.Column(db.Float)
+        munt = db.Column(db.String(8))
+
+def _compute_realized_profit_sqlalchemy(group_id: int):
+    if not db:
+        return None
+    try:
+        total_sell = db.session.query(
+            func.coalesce(func.sum((Transacties.koers - Portefeuille.avg_price) * Transacties.aantal), 0.0)
+        ).join(Portefeuille, Transacties.portefeuille_id == Portefeuille.port_id)
+        total_sell = total_sell.filter(Portefeuille.groep_id == group_id, Transacties.type == 'SELL').scalar() or 0.0
+
+        # Fees: treated as negative realized profit; sum of FEE koers across group's portfolios
+        total_fee = db.session.query(
+            func.coalesce(func.sum(Transacties.koers), 0.0)
+        ).join(Portefeuille, Transacties.portefeuille_id == Portefeuille.port_id)
+        total_fee = total_fee.filter(Portefeuille.groep_id == group_id, Transacties.type == 'FEE').scalar() or 0.0
+        total = float(total_sell) - float(total_fee)
+
+        count = db.session.query(func.count(Transacties.transactie_id))\
+            .join(Portefeuille, Transacties.portefeuille_id == Portefeuille.port_id)\
+            .filter(Portefeuille.groep_id == group_id, Transacties.type == 'SELL').scalar() or 0
+        return float(total), int(count)
+    except Exception as e:
+        app.logger.warning(f"Realized profit (SQLAlchemy) faalde: {e}")
+        return None
+
+def _compute_realized_profit_supabase(group_id: int):
+    try:
+        ports_res = supabase.table('Portefeuille').select('port_id, avg_price').eq('groep_id', group_id).execute()
+        port_avg = {row.get('port_id'): float(row.get('avg_price') or 0) for row in (ports_res.data or [])}
+        sell_res = supabase.table('Transacties').select('portefeuille_id, type, aantal, koers').eq('type', 'SELL').execute()
+        total_sell = 0.0
+        count = 0
+        for row in (sell_res.data or []):
+            pid = row.get('portefeuille_id')
+            if pid not in port_avg:
+                # Alleen SELLs binnen de huidige groep tellen mee; filter via port_avg mapping
+                continue
+            avg = float(port_avg.get(pid) or 0)
+            qty = float(row.get('aantal') or 0)
+            price = float(row.get('koers') or 0)
+            total_sell += (price - avg) * qty
+            count += 1
+        # Fees: sum all FEE koers for group's portfolios and subtract
+        fee_res = supabase.table('Transacties').select('portefeuille_id, type, koers').eq('type', 'FEE').execute()
+        total_fee = 0.0
+        for row in (fee_res.data or []):
+            pid = row.get('portefeuille_id')
+            if pid not in port_avg:
+                continue
+            fee_amount = float(row.get('koers') or 0)
+            total_fee += fee_amount
+        total = total_sell - total_fee
+        return total, count
+    except Exception as e:
+        app.logger.warning(f"Realized profit (Supabase) faalde: {e}")
+        return 0.0, 0
+
+@app.route('/api/groups/<int:group_id>/realized_profit')
+def api_realized_profit(group_id: int):
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+    # Probeer eerst SQLAlchemy (zoals gevraagd), val terug op Supabase als niet geconfigureerd
+    result = _compute_realized_profit_sqlalchemy(group_id)
+    if result is None:
+        total, count = _compute_realized_profit_supabase(group_id)
+    else:
+        total, count = result
+    return jsonify({
+        "group_id": group_id,
+        "total_profit": round(float(total), 2),
+        "sell_count": int(count)
+    })
 
 @app.route("/leden")
 def leden():
@@ -732,9 +904,13 @@ def ai_analyze_stock():
         name = ticker
         price_info = "Onbekend"
         try:
-            quote_data = _safe_quote(ticker)
+            # Minimal quote via Yahoo Finance HTTP
+            r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}", timeout=8)
+            j = r.json()
+            q = (j.get("quoteResponse", {}) or {}).get("result", [])
+            quote_data = q[0] if q else None
             if quote_data:
-                name = quote_data.get("longName") or ticker
+                name = quote_data.get("longName") or quote_data.get("shortName") or ticker
                 if quote_data.get("regularMarketPrice"):
                     price_info = f"{quote_data.get('regularMarketPrice')} {quote_data.get('currency', 'EUR')}"
         except: pass

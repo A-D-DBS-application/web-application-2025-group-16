@@ -20,6 +20,8 @@
         .form-label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 0.35rem; }
         .form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.65rem 0.9rem; font-size: 0.95rem; color: #0f172a; background: #fff; }
         .form-input:disabled { background: #f8fafc; color: #94a3b8; }
+        /* Geef alle onveranderlijke (readonly) velden dezelfde pill-stijl */
+        .form-input[readonly] { border-color: #cbd5f5; border-style: dashed; background: #f8fbff; font-weight: 600; }
         .quote-pill { border: 1px dashed #cbd5f5; border-radius: 0.75rem; padding: 0.65rem 0.9rem; background: #f8fbff; font-weight: 600; color: #0f172a; }
         .btn-secondary { border: 1px solid #cbd5f5; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }
         .btn-primary { background-color: #2563eb; color: white; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: background-color 0.2s; }
@@ -229,6 +231,14 @@
                     </div>
                 </div>
 
+                <div class="grid md:grid-cols-3 gap-4 mt-2">
+                    <div>
+                        <label class="form-label">Transactiedatum</label>
+                        <input id="transaction-date" type="date" class="form-input" {{ builder_disabled }}>
+                        <div class="text-[11px] mt-1 text-slate-400">Standaard vandaag; pas aan indien nodig.</div>
+                    </div>
+                </div>
+
                 <div class="grid md:grid-cols-3 gap-4">
                     <div>
                         <label class="form-label">Naam</label>
@@ -238,9 +248,34 @@
                         <label class="form-label">Status</label>
                         <div id="form-status" class="quote-pill text-slate-400">{{ 'Selecteer eerst een groep' if not active_group else 'Zoek een ticker om details te laden' }}</div>
                     </div>
+                </div>
+
+                <!-- Bruto/Totaal/Kosten berekening -->
+                <div class="grid md:grid-cols-3 gap-4 mt-2">
                     <div>
-                        <label class="form-label">Transactiekost (EUR)</label>
-                        <input id="transaction-cost-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <label class="form-label">Bruto totaal (koers × aantal)</label>
+                        <input id="gross-total" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
+                    </div>
+                    <div>
+                        <label class="form-label">Totaal in eigen munt</label>
+                        <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
+                    </div>
+                    <div>
+                        <label class="form-label">Kosten (TOTAAL − Bruto)</label>
+                        <input id="derived-cost" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
+                    </div>
+                </div>
+
+                <!-- Extra wisselkoers velden wanneer munt != EUR -->
+                <div id="currency-extra" class="grid md:grid-cols-3 gap-4 mt-2 hidden">
+                    <div>
+                        <label class="form-label">Totaal in euro</label>
+                        <input id="final-total-eur" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
+                    </div>
+                    <div>
+                        <label class="form-label">WK</label>
+                        <input id="wk-output" type="number" step="0.0001" class="form-input" placeholder="1.0000" readonly>
+                        <div class="text-[11px] mt-1 text-slate-400">Wisselkoers = eigen munt / euro</div>
                     </div>
                 </div>
 
@@ -265,7 +300,7 @@
         </div>
 
         <!-- 1. KPI KAARTEN (Totalen) -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <!-- Totale Waarde -->
             <div class="glass-card p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none">
                 <div class="flex justify-between items-start">
@@ -323,6 +358,20 @@
                     <p class="text-xs text-slate-400">Gebruik deze knoppen voor stortingen of opnames buiten de app.</p>
                 </div>
             </div>
+
+            <!-- Gerealiseerde Winst -->
+            <div class="glass-card p-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-slate-500 text-sm font-medium mb-1">Gerealiseerde Winst</p>
+                        <h2 id="realized-profit" class="text-3xl font-bold text-slate-900">€ 0,00</h2>
+                    </div>
+                    <div class="p-2 bg-indigo-50 rounded-lg">
+                        <i data-lucide="check-circle" class="h-6 w-6 text-indigo-600"></i>
+                    </div>
+                </div>
+                <p id="realized-count" class="text-slate-400 text-xs">— verkopen</p>
+            </div>
         </div>
 
         <!-- 2. GRAFIEK & TABEL SECTIE -->
@@ -356,8 +405,11 @@
                             <tr>
                                 <th class="px-6 py-4">Ticker</th>
                                 <th class="px-6 py-4">Sector</th>
+                                <th class="px-6 py-4">Munt</th>
                                 <th class="px-6 py-4 text-right">Aantal</th>
-                                <th class="px-6 py-4 text-right">Koers</th>
+                                <th class="px-6 py-4 text-right">Koers in eigen munt</th>
+                                <th class="px-6 py-4 text-right">WK</th>
+                                <th class="px-6 py-4 text-right">Koers in euro</th>
                                 <th class="px-6 py-4 text-right">Waarde</th>
                                 <th class="px-6 py-4 text-right">Winst</th>
                                 <th class="px-6 py-4 text-right">Acties</th>
@@ -472,8 +524,12 @@
         const quoteSectorEl = document.getElementById('quote-sector');
         const quotePriceInput = document.getElementById('quote-price-input');
         const currencyInput = document.getElementById('currency-input');
+        const transactionDateInput = document.getElementById('transaction-date');
         const formStatusEl = document.getElementById('form-status');
-        const transactionCostInput = document.getElementById('transaction-cost-input');
+        const transactionCostInput = null; // veld verwijderd; kosten worden afgeleid
+        const grossTotalInput = document.getElementById('gross-total');
+        const finalTotalInput = document.getElementById('final-total');
+        const derivedCostInput = document.getElementById('derived-cost');
         const cashAdjustInput = document.getElementById('cash-adjust-input');
         const cashAddBtn = document.getElementById('cash-add-btn');
         const cashRemoveBtn = document.getElementById('cash-remove-btn');
@@ -491,6 +547,8 @@
         const aiScanBtn = document.getElementById('ai-scan-btn');
         const aiModal = document.getElementById('ai-modal');
         const aiContent = document.getElementById('ai-content');
+        const realizedProfitEl = document.getElementById('realized-profit');
+        const realizedCountEl = document.getElementById('realized-count');
 
         const QUOTE_ENDPOINT = '/api/quote/';
         let lastQuote = null;
@@ -510,6 +568,70 @@
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
         document.addEventListener('click', handleTableAction);
         if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
+                function updateTotals() {
+                    const qty = parseFloat(quantityInput?.value || '0') || 0;
+                    const price = parseFloat(quotePriceInput?.value || '0') || 0;
+                    const gross = qty * price;
+                    if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
+                    const final = parseFloat(finalTotalInput?.value || '0') || 0;
+                    // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
+                    let derived = final - gross;
+                    if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
+                    // Wisselkoers sectie tonen indien munt != EUR
+                    const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+                    const extra = document.getElementById('currency-extra');
+                    const eurInput = document.getElementById('final-total-eur');
+                    const wkOutput = document.getElementById('wk-output');
+                    const showExtra = cur !== 'EUR';
+                    if (extra) extra.classList.toggle('hidden', !showExtra);
+                    if (showExtra && eurInput && wkOutput) {
+                        const totalEur = parseFloat(eurInput.value || '0') || 0;
+                        if (totalEur > 0 && final > 0) {
+                            const wk = final / totalEur;
+                            wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
+                        } else {
+                            // Probeer FX op te halen wanneer geen directe WK afleiding
+                            try {
+                                fetchFxRate(cur).then(rate => {
+                                    if (rate && isFinite(rate)) {
+                                        wkOutput.value = Number(rate).toFixed(4);
+                                    } else {
+                                        wkOutput.value = '';
+                                    }
+                                });
+                            } catch { wkOutput.value = ''; }
+                        }
+                    } else if (wkOutput) {
+                        wkOutput.value = '';
+                    }
+                    // also mirror into transaction-cost-input for logging if user wants auto-fill
+                    // geen apart kostenveld meer; alleen readonly weergave
+                }
+                // Recompute on changes
+                [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
+                    if (el) el.addEventListener('input', updateTotals);
+                });
+                updateTotals();
+
+        async function fetchFxRate(cur) {
+            const code = String(cur||'').toUpperCase();
+            if (!code || code === 'EUR') return 1;
+            try {
+                const resp = await fetch(`/api/fx/${encodeURIComponent(code)}`);
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'FX fout');
+                return Number(data.rate) || null;
+            } catch {
+                return null;
+            }
+        }
+        // Voorzie standaard huidige datum/tijd
+        if (transactionDateInput) {
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const local = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+            transactionDateInput.value = local;
+        }
 
         // Helpers voor CASH herkenning
         function isCashRow(row) {
@@ -640,12 +762,66 @@
                     return fetchPortfolio();
                 }
 
-                currentPortfolio = data; // Opslaan voor AI
-                renderDashboard(data);
+                // Vul ontbrekende munt/wisselkoers vanuit laatste transactie per ticker
+                const enriched = await augmentPortfolioCurrencies(data);
+                currentPortfolio = enriched; // Opslag voor AI
+                renderDashboard(enriched);
+                // Update Realized Profit card
+                fetchRealizedProfit();
             } catch (err) {
                 console.error("Error:", err);
-                document.getElementById('error-text').innerText = err.message;
-                document.getElementById('error-message').classList.remove('hidden');
+                const et = document.getElementById('error-text');
+                if (et) et.innerText = err.message || String(err);
+                const em = document.getElementById('error-message');
+                if (em) em.classList.remove('hidden');
+            }
+        }
+
+        async function augmentPortfolioCurrencies(rows) {
+            if (!Array.isArray(rows) || rows.length === 0) return rows;
+            const result = [];
+            for (const row of rows) {
+                // Sla CASH over
+                const t = String(row.ticker||'').toUpperCase();
+                if (t === 'CASH') { result.push(row); continue; }
+                const hasCur = Boolean(row.munt || row.currency);
+                const hasWk = !isNaN(Number(row.wisselkoers));
+                if (hasCur && hasWk) { result.push(row); continue; }
+                try {
+                    const { data: txs, error } = await supabase
+                        .from('Transacties')
+                        .select('munt,wisselkoers,ticker')
+                        .eq('ticker', String(row.ticker||'').toUpperCase())
+                        .order('datum_tr', { ascending: false })
+                        .limit(1);
+                    if (!error && txs && txs.length > 0) {
+                        const tx = txs[0];
+                        const cur = tx.munt || row.munt || row.currency || 'EUR';
+                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : row.wisselkoers);
+                        // Alleen voor weergave verrijken; niet opslaan in Portefeuille
+                        row.munt = cur;
+                        row.currency = cur;
+                        if (!isNaN(wk)) row.wisselkoers = wk;
+                    }
+                } catch (e) {
+                    // negeer en gebruik bestaande waarden
+                }
+                result.push(row);
+            }
+            return result;
+        }
+        async function fetchRealizedProfit() {
+            try {
+                if (!ACTIVE_GROUP_ID || !realizedProfitEl) return;
+                const resp = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/realized_profit`);
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Kon gerealiseerde winst niet ophalen');
+                const total = Number(data.total_profit || 0);
+                realizedProfitEl.textContent = eur.format(total);
+                realizedProfitEl.className = 'text-3xl font-bold ' + (total >= 0 ? 'text-emerald-600' : 'text-rose-600');
+                if (realizedCountEl) realizedCountEl.textContent = `${data.sell_count || 0} verkopen`;
+            } catch (e) {
+                if (realizedProfitEl) realizedProfitEl.textContent = '€ 0,00';
             }
         }
 
@@ -717,8 +893,20 @@
                                 ${sectorName}
                             </span>
                         </td>
+                        <td class="px-6 py-4 text-slate-600">${(function(){
+                            const t = String(item.ticker||'').toUpperCase();
+                            if (t === 'CASH') return 'EUR';
+                            const cur = item.munt || item.currency;
+                            if (cur) return cur;
+                            // Fallback: if WK explicitly 1, assume EUR
+                            const wk = Number(item.wisselkoers);
+                            if (!isNaN(wk) && wk === 1) return 'EUR';
+                            return 'EUR';
+                        })()}</td>
                         <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
                         <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(item.wisselkoers ?? 1).toFixed ? (item.wisselkoers ?? 1).toFixed(4) : (Number(item.wisselkoers) ? Number(item.wisselkoers).toFixed(4) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? '1.0000' : '—'))}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(Number(item.wisselkoers) ? eur.format(price / Number(item.wisselkoers)) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? eur.format(price) : '—'))}</td>
                         <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>
                         <td class="px-6 py-4 text-right">
                             <div class="${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold">
@@ -947,7 +1135,13 @@
             // Gebruik manueel ingegeven koers indien beschikbaar, anders laatst opgehaalde.
             let overridePrice = parseFloat(quotePriceInput?.value || '0');
             let avgPrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
-            let transactionCost = parseFloat(transactionCostInput?.value || '0');
+            let transactionCost = parseFloat(derivedCostInput?.value || '0');
+            // If final total provided, derive cost from final - gross
+            const grossFromInputs = (qty * avgPrice);
+            const finalProvided = parseFloat(finalTotalInput?.value || '0');
+            if (finalTotalInput && finalProvided > 0) {
+                transactionCost = finalProvided - grossFromInputs;
+            }
             let selectedCurrency = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
             if (!selectedCurrency.match(/^[A-Z]{2,6}$/)) {
                 setFormStatus('Ongeldige munt (2–6 letters)', 'error');
@@ -970,8 +1164,13 @@
                 setFormStatus('Laad eerst een koers (Zoek).', 'error');
                 return;
             }
-            if (isNaN(transactionCost) || transactionCost < 0) {
+            if (isNaN(transactionCost)) {
                 transactionCost = 0;
+            }
+            // Kosten mogen niet kleiner dan 0 zijn
+            if (transactionCost < 0) {
+                setFormStatus('Kosten mogen niet kleiner dan 0 zijn', 'error');
+                return;
             }
 
             if (!lastCashRow) {
@@ -979,10 +1178,31 @@
                 return;
             }
 
-            const totalCost = qty * avgPrice + transactionCost;
+            // Fees: kosten zijn positief; geen negatieve kosten toegestaan
+            const feeAmount = transactionCost;
+            const totalCost = qty * avgPrice + feeAmount;
             const cashAvailable = Number(lastCashRow.current_price) || 0;
             if (totalCost > cashAvailable + 1e-8) {
                 setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
+                return;
+            }
+
+            // Bevestigingssamenvatting tonen voor opslaan
+            const dateStr = (transactionDateInput?.value || '').trim() || '—';
+            const summary = [
+                `Transactietype: Aankoop`,
+                `Ticker: ${symbol}`,
+                `Aantal: ${qty}`,
+                `Koers: ${avgPrice.toFixed(2)} ${selectedCurrency}`,
+                `Bruto: ${(qty * avgPrice).toFixed(2)} ${selectedCurrency}`,
+                `Kosten (afgeleid): ${feeAmount.toFixed(2)} ${selectedCurrency}`,
+                `Totaal: ${(qty * avgPrice + feeAmount).toFixed(2)} ${selectedCurrency}`,
+                `Transactiedatum: ${dateStr}`
+            ].join('\n');
+            const confirmMsg = `${summary}\n\nBen je zeker dat je deze transactie wil opslaan?`;
+            const ok = window.confirm(confirmMsg);
+            if (!ok) {
+                setFormStatus('Opslaan geannuleerd', 'info');
                 return;
             }
 
@@ -1016,7 +1236,7 @@
                     return;
                 }
                 const newAvg = ((prevQty * prevAvg) + (qty * avgPrice)) / newQty;
-                const newFee = prevFee + (transactionCost || 0);
+                const newFee = prevFee + feeAmount;
 
                 const { error: updError } = await supabase
                     .from('Portefeuille')
@@ -1045,7 +1265,7 @@
                     avg_price: avgPrice,
                     current_price: priceNow,
                     sector: sector,
-                    transactiekost: transactionCost
+                    transactiekost: feeAmount
                 };
                 const { data: insertData, error } = await supabase.from('Portefeuille').insert([payload]).select();
                 if (error) {
@@ -1094,13 +1314,14 @@
                         ticker: symbol,
                         aantal: qty,
                         koers: priceNow,
-                        wisselkoers: 1,
+                        wisselkoers: (parseFloat(document.getElementById('wk-output')?.value || '0') || 1),
                         munt: selectedCurrency,
+                        datum_tr: (transactionDateInput?.value || null),
                         portefeuille_id: insertedPortId
                     })
                 });
-                // Log ook een FEE-transactie als er transactiekost is ingegeven
-                if (transactionCost && transactionCost > 0) {
+                // Log een FEE-transactie indien kosten > 0
+                if (feeAmount && feeAmount > 0) {
                     await fetch('/api/transactions/log', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1108,9 +1329,10 @@
                             type: 'FEE',
                             ticker: symbol,
                             aantal: 1,
-                            koers: transactionCost,
-                            wisselkoers: 1,
+                            koers: feeAmount,
+                            wisselkoers: (parseFloat(document.getElementById('wk-output')?.value || '0') || 1),
                             munt: selectedCurrency,
+                            datum_tr: (transactionDateInput?.value || null),
                             portefeuille_id: insertedPortId
                         })
                     });
@@ -1389,13 +1611,15 @@
                 if (!cur.match(/^[A-Z]{2,6}$/)) {
                     cur = 'EUR';
                 }
+                const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
                 const body = {
                     type: details.type,
                     ticker: details.ticker,
                     aantal: details.aantal,
                     koers: details.koers,
-                    wisselkoers: 1,
+                    wisselkoers: wkVal,
                     munt: cur,
+                    datum_tr: (transactionDateInput?.value || null),
                     portefeuille_id: tradeContext?.positionId || null
                 };
                 const resp = await fetch('/api/transactions/log', {
