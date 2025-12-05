@@ -614,7 +614,9 @@ def api_log_transaction():
     datum_payload = raw_date if raw_date else None
     ok, res = log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate, currency, datum_payload)
     if not ok:
+        app.logger.error(f"Transactie log gefaald: {res}")
         return jsonify({"error": res}), 400
+    app.logger.info(f"Transactie gelogd voor {ticker} in {currency}; port_id={portfolio_id}")
     return jsonify({"transaction": res})
 
 
