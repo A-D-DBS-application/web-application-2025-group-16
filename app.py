@@ -11,15 +11,10 @@ import requests
 from dotenv import load_dotenv
 import yfinance as yf
 
-
-
 load_dotenv()
-
 
 import os # Deze staat waarschijnlijk al bovenaan, maar voor de zekerheid
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") 
-
-
 
 # Probeer yfinance te laden; faalt onder Python 3.14 i.v.m. protobuf.
 try:
@@ -68,11 +63,12 @@ from auth import (
     list_cash_transactions_for_group,
     get_cash_balance_for_group,
     add_portfolio_position,
-    koersen_updater
-    , log_portfolio_transaction, supabase,
+    koersen_updater,
+    log_portfolio_transaction, supabase,
     create_group_request,
     list_group_requests_for_group,
     approve_group_request,
+    update_member_role # <--- ZORG DAT DEZE TOEGEVOEGD IS AAN AUTH.PY
 )
 import re
 
@@ -268,7 +264,16 @@ def _current_group_snapshot():
         "name": group["name"],
         "code": group.get("invite_code"),
         "member_total": count_value,
+        "role": membership.get("role") # <--- ROL TOEGEVOEGD (host/member)
     }
+
+# --- NIEUWE HELPER VOOR RECHTEN ---
+def is_current_user_host():
+    """Geeft True terug als de huidige ingelogde user de rol 'host' heeft in de actieve groep."""
+    snap = _current_group_snapshot()
+    if snap and snap.get("role") == "host":
+        return True
+    return False
 
 
 def _list_user_groups():
@@ -403,6 +408,7 @@ def create_group():
                     error = group_response
                 else:
                     _leave_current_group()
+                    # De maker van de groep is automatisch HOST
                     add_member_to_group(group_response["id"], session["user_id"], role="host")
                     initialize_cash_position(group_response["id"], amount=0)
                     session["group_id"] = group_response["id"]
@@ -448,13 +454,17 @@ def join_group():
 def approve_request(req_id):
     if "user_id" not in session:
         return redirect(url_for("login"))
+    
+    # Beveiliging: Alleen host mag approven
+    if not is_current_user_host():
+        flash("Alleen hosts kunnen verzoeken goedkeuren.", "error")
+        return redirect(url_for("group_dashboard"))
 
     ok, msg = approve_group_request(req_id, session["user_id"])
 
     flash(msg, "success" if ok else "error")
 
     return redirect(url_for("group_dashboard"))
-
 
 
 @app.route("/groups/current")
@@ -479,7 +489,10 @@ def group_dashboard():
         "member_total": len(member_rows),
         "owner_id": group_data.get("owner_id"),
     }
-    is_owner = session.get("user_id") == group_data.get("owner_id")
+    
+    # We gebruiken is_host als vervanging voor het oude is_owner concept in de template
+    is_host = is_current_user_host()
+    
     # Pending requests ophalen
     ok_reqs, req_rows = list_group_requests_for_group(group_data["id"])
     requests = []
@@ -502,11 +515,34 @@ def group_dashboard():
     "group.html",
     group=group_context,
     members=member_profiles,
-    is_owner=is_owner,
+    is_owner=is_host, # De template gebruikt 'is_owner' voor admin knoppen, we vullen dit met host rechten
     requests=requests,
-    error=load_error
+    error=load_error,
+    is_host=is_host,
+    current_user_id=session.get("user_id")
 )
 
+# NIEUWE ROUTE: Promote Member
+@app.route("/groups/promote/<int:member_id>", methods=["POST"])
+def promote_member(member_id):
+    if "user_id" not in session: return redirect(url_for("login"))
+    
+    if not is_current_user_host():
+        flash("Alleen hosts kunnen beheerders benoemen.", "error")
+        return redirect(url_for("group_dashboard"))
+
+    group_id = session.get("group_id")
+    if not group_id: return redirect(url_for("home"))
+
+    from auth import update_member_role
+    ok, msg = update_member_role(group_id, member_id, "host")
+    
+    if ok:
+        flash(msg, "success")
+    else:
+        flash(msg, "error")
+        
+    return redirect(url_for("group_dashboard"))
 
 
 @app.route("/groups/select/<int:group_id>", methods=["POST"])
@@ -526,7 +562,17 @@ def portfolio():
     if "user_id" not in session: return redirect(url_for("login"))
     active_group = _current_group_snapshot()
     user_groups = _list_user_groups()
-    return render_template("dashboard.html", supabase_url=SUPABASE_URL, supabase_key=SUPABASE_ANON_KEY, active_group=active_group, user_groups=user_groups)
+    # Host status ophalen
+    is_host = (active_group and active_group.get("role") == "host")
+    
+    return render_template(
+        "dashboard.html", 
+        supabase_url=SUPABASE_URL, 
+        supabase_key=SUPABASE_ANON_KEY, 
+        active_group=active_group, 
+        user_groups=user_groups,
+        is_host=is_host # Geef door aan template
+    )
 
 
 @app.route("/cash", methods=["GET", "POST"])
@@ -536,22 +582,28 @@ def cashbox():
     if not membership: return redirect(url_for("home"))
     group_id = membership["group_id"]
     error = None
+    
+    # Check host
+    is_host = is_current_user_host()
 
     if request.method == "POST":
-        try:
-            amount = float(request.form.get("amount", "0").strip())
-            direction = (request.form.get("direction") or "").strip().lower()
-            description = (request.form.get("description") or "").strip()
-            if amount <= 0 or direction not in ("in", "out"):
-                error = "Ongeldige invoer"
-            else:
-                add_cash_transaction(group_id, amount, direction, description, created_by=session.get("user_id"))
-                return redirect(url_for("cashbox"))
-        except: error = "Ongeldige invoer"
+        if not is_host:
+            error = "Alleen hosts kunnen transacties toevoegen."
+        else:
+            try:
+                amount = float(request.form.get("amount", "0").strip())
+                direction = (request.form.get("direction") or "").strip().lower()
+                description = (request.form.get("description") or "").strip()
+                if amount <= 0 or direction not in ("in", "out"):
+                    error = "Ongeldige invoer"
+                else:
+                    add_cash_transaction(group_id, amount, direction, description, created_by=session.get("user_id"))
+                    return redirect(url_for("cashbox"))
+            except: error = "Ongeldige invoer"
 
     ok_hist, history = list_cash_transactions_for_group(group_id)
     ok_bal, balance = get_cash_balance_for_group(group_id)
-    return render_template("cashbox.html", balance=balance if ok_bal else 0.0, history=history if ok_hist else [], error=error)
+    return render_template("cashbox.html", balance=balance if ok_bal else 0.0, history=history if ok_hist else [], error=error, is_host=is_host)
 
 @app.route("/transactions")
 def transactions_page():
@@ -583,6 +635,11 @@ def transactions_page():
 @app.route("/api/transactions/log", methods=["POST"])
 def api_log_transaction():
     if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
+    
+    # HOST CHECK
+    if not is_current_user_host():
+        return jsonify({"error": "Geen rechten: alleen hosts kunnen handelen."}), 403
+
     data = request.get_json() or {}
     portfolio_id = data.get("portefeuille_id")
     ticker = (data.get("ticker") or "").upper().strip()
@@ -637,16 +694,15 @@ def yahoo_quote(symbol: str):
             "longName": item.get("longName") or item.get("shortName"),
             "regularMarketPrice": item.get("regularMarketPrice"),
             "currency": item.get("currency"),
+            "sector": item.get("sector"), # Sector toegevoegd aan response
         }
         if data.get("regularMarketPrice") is None:
             return jsonify({"error": "Niet gevonden"}), 404
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": "Quote fout", "details": str(e)}), 500
-    data = _safe_quote(symbol)
-    if not data or data.get("regularMarketPrice") is None:
-        return jsonify({"error": "Niet gevonden"}), 404
-    return jsonify(data)
+    
+    # Oude fallback weggehaald om verwarring te voorkomen, de HTTP request hierboven is de primaire methode
 
 # --- MODELLEN (alleen actief indien SQLAlchemy geconfigureerd) ---
 if db:
@@ -813,6 +869,11 @@ def leave_group():
 @app.route("/groups/delete", methods=["POST"])
 def delete_group_route():
     if "user_id" not in session: return redirect(url_for("login"))
+    
+    # Extra check: host
+    if not is_current_user_host():
+        return redirect(url_for("home"))
+
     group_id = session.get("group_id")
     if group_id:
         delete_group(group_id)
@@ -822,6 +883,10 @@ def delete_group_route():
 @app.route("/groups/remove-member/<int:member_id>", methods=["POST"])
 def remove_group_member(member_id: int):
     if "user_id" not in session: return redirect(url_for("login"))
+    # Extra check: host
+    if not is_current_user_host():
+        return redirect(url_for("group_dashboard"))
+
     group_id = session.get("group_id")
     if group_id: remove_member_from_group(group_id, member_id)
     return redirect("/groups/current")
@@ -829,6 +894,12 @@ def remove_group_member(member_id: int):
 @app.route("/group/<int:group_id>/import_csv", methods=["POST"])
 def import_csv(group_id):
     if "user_id" not in session: return redirect(url_for("login"))
+    
+    # HOST CHECK
+    if not is_current_user_host():
+        flash("Alleen hosts kunnen importeren.", "error")
+        return redirect(url_for("portfolio"))
+
     file = request.files.get('file')
     if file and file.filename:
         try:
@@ -883,6 +954,9 @@ def refresh_prices(group_id):
     if "user_id" not in session:
         return redirect(url_for("login"))
     
+    # Optioneel: check host, of laat leden ook refreshen
+    # if not is_current_user_host(): ...
+
     ok, msg = koersen_updater(group_id)
     if ok:
         flash(f"Koersen ververst: {msg}", "success")

@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Beleggingsclub Portefeuille</title>
     
-    <!-- Styling & Iconen -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Supabase & Grafieken -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -42,7 +40,6 @@
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        <!-- Titel & Acties -->
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div>
                 <div class="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-slate-400">
@@ -51,6 +48,9 @@
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 tracking-normal">
                         <i data-lucide="layers" class="h-3.5 w-3.5"></i>
                         {{ active_group.name }}
+                        {% if is_host %}
+                            <span class="ml-2 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">HOST</span>
+                        {% endif %}
                     </span>
                     {% endif %}
                 </div>
@@ -65,8 +65,6 @@
                     AI Portefeuille Scan
                 </button>
                 
-
-                <!-- AANGEPASTE KNOP: Nu een link naar de backend update functie -->
                 <a href="/group/{{ active_group.id }}/refresh_prices" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="refresh-cw" class="h-4 w-4"></i>
                     Ververs Koersen
@@ -76,7 +74,6 @@
                     Transacties
                 </a>
                 
-
                 {% else %}
                 <button onclick="window.location.reload()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="refresh-cw" class="h-4 w-4"></i>
@@ -86,7 +83,6 @@
             </div>
         </div>
         
-        <!-- FLUSH MESSAGES: Feedback van de server -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             <div class="mb-8">
@@ -151,7 +147,7 @@
                 </div>
                 <div class="flex gap-2 items-center">
                     {% if active_group %}
-                        <!-- CSV Import Form -->
+                        {% if is_host %}
                         <form action="/group/{{ active_group.id }}/import_csv" method="post" enctype="multipart/form-data" id="csv-form" class="hidden">
                             <input type="file" name="file" id="csv-file-input" accept=".csv" onchange="document.getElementById('csv-form').submit()">
                         </form>
@@ -159,6 +155,7 @@
                             <i data-lucide="upload" class="h-4 w-4"></i>
                             Import CSV
                         </button>
+                        {% endif %}
                     {% else %}
                         <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-sm">
                             <i data-lucide="info" class="h-4 w-4"></i>
@@ -168,6 +165,7 @@
                 </div>
             </div>
 
+            {% if is_host %}
             <form id="position-form" class="space-y-5">
                 <div class="grid md:grid-cols-3 gap-4">
                     <div>
@@ -250,7 +248,6 @@
                     </div>
                 </div>
 
-                <!-- Bruto/Totaal/Kosten berekening -->
                 <div class="grid md:grid-cols-3 gap-4 mt-2">
                     <div>
                         <label class="form-label">Bruto totaal (koers × aantal)</label>
@@ -266,7 +263,6 @@
                     </div>
                 </div>
 
-                <!-- Extra wisselkoers velden wanneer munt != EUR -->
                 <div id="currency-extra" class="grid md:grid-cols-3 gap-4 mt-2 hidden">
                     <div>
                         <label class="form-label">Totaal in euro</label>
@@ -287,6 +283,13 @@
                 </div>
                 </div>
             </form>
+            {% else %}
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-8 text-center">
+                <i data-lucide="lock" class="h-8 w-8 text-slate-400 mx-auto mb-3"></i>
+                <h3 class="text-lg font-semibold text-slate-700">Alleen-lezen modus</h3>
+                <p class="text-slate-500 mt-2">Je bekijkt deze portefeuille als lid. Alleen hosts kunnen transacties toevoegen of bewerken.</p>
+            </div>
+            {% endif %}
         </div>
 
         {% if not active_group %}
@@ -299,9 +302,7 @@
             <strong class="font-bold">Fout!</strong> <span id="error-text"></span>
         </div>
 
-        <!-- 1. KPI KAARTEN (Totalen) -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <!-- Totale Waarde -->
             <div class="glass-card p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none">
                 <div class="flex justify-between items-start">
                     <div>
@@ -319,7 +320,6 @@
                 </div>
             </div>
 
-            <!-- Winst/Verlies -->
             <div class="glass-card p-6">
                 <div class="flex justify-between items-start">
                     <div>
@@ -335,7 +335,6 @@
                 </div>
             </div>
 
-            <!-- Cash (Dynamisch) -->
             <div class="glass-card p-6 space-y-4">
                 <div class="flex justify-between items-start">
                     <div>
@@ -347,6 +346,8 @@
                     </div>
                 </div>
                 <p id="cash-status" class="text-slate-400 text-xs">Klaar om te investeren</p>
+                
+                {% if is_host %}
                 <div class="flex flex-col gap-2">
                     <div class="flex flex-col sm:flex-row gap-2">
                         <input id="cash-adjust-input" type="number" step="0.01" min="0" class="form-input flex-1" placeholder="Bedrag" {{ builder_disabled }}>
@@ -357,9 +358,9 @@
                     </div>
                     <p class="text-xs text-slate-400">Gebruik deze knoppen voor stortingen of opnames buiten de app.</p>
                 </div>
+                {% endif %}
             </div>
 
-            <!-- Gerealiseerde Winst -->
             <div class="glass-card p-6">
                 <div class="flex justify-between items-start">
                     <div>
@@ -374,10 +375,8 @@
             </div>
         </div>
 
-        <!-- 2. GRAFIEK & TABEL SECTIE -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- GRAFIEK (Links) -->
             <div class="glass-card p-6 flex flex-col lg:col-span-1">
                 <h3 class="font-bold text-slate-900 mb-6 flex items-center gap-2">
                     <i data-lucide="pie-chart" class="h-5 w-5 text-slate-400"></i>
@@ -391,7 +390,6 @@
                 </div>
             </div>
 
-            <!-- TABEL (Rechts) -->
             <div class="glass-card overflow-hidden lg:col-span-2 flex flex-col">
                 <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                     <h3 class="font-bold text-slate-900 flex items-center gap-2">
@@ -422,8 +420,7 @@
                             </tr>
                         </thead>
                         <tbody id="portfolio-table-body" class="divide-y divide-slate-100 bg-white">
-                            <!-- JS vult dit -->
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -431,7 +428,6 @@
 
     </main>
 
-    <!-- Trade Modal -->
     <div id="trade-modal" class="fixed inset-0 z-40 hidden">
         <div class="absolute inset-0 bg-slate-900/60" data-close-trade></div>
         <div class="relative mx-auto mt-20 w-full max-w-lg px-4">
@@ -473,13 +469,10 @@
         </div>
     </div>
 
-    <!-- AI Analysis Modal -->
     <div id="ai-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <!-- Achtergrond overlay -->
             <div class="fixed inset-0 transition-opacity bg-slate-900/75" aria-hidden="true" onclick="closeAiModal()"></div>
 
-            <!-- Modal Panel -->
             <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <div class="sm:flex sm:items-start">
@@ -489,7 +482,6 @@
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                             <h3 class="text-lg leading-6 font-medium text-slate-900" id="ai-modal-title">AI Analyse</h3>
                             <div class="mt-4">
-                                <!-- Hier komt de AI content -->
                                 <div id="ai-content" class="text-sm text-slate-500 prose max-w-none">
                                     <div class="flex justify-center py-8">
                                         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -516,6 +508,9 @@
         const SUPABASE_KEY = "{{ supabase_key }}";
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const ACTIVE_GROUP_ID = Number('{{ active_group.id if active_group else "" }}') || null;
+        
+        // HOST CONSTANTE: Dit bepaalt of JS knoppen toont
+        const IS_HOST = {{ 'true' if is_host else 'false' }};
 
         const tickerInput = document.getElementById('ticker-input');
         const quantityInput = document.getElementById('quantity-input');
@@ -563,6 +558,7 @@
         let tradeContext = null;
         let currentPortfolio = []; // Opslag voor AI portfolio scan
 
+        // Alleen event listeners toevoegen als de elementen bestaan (want bij !HOST zijn sommige velden weg)
         if (lookupBtn) lookupBtn.addEventListener('click', handleLookup);
         if (positionForm) positionForm.addEventListener('submit', handlePositionSubmit);
         if (txnTypeSelect) txnTypeSelect.addEventListener('change', updateTransactionUI);
@@ -572,8 +568,10 @@
         if (cashAddBtn) cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
         if (cashRemoveBtn) cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
         if (tradeForm) tradeForm.addEventListener('submit', handleTradeSubmit);
+        
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
         document.addEventListener('click', handleTableAction);
+        
         if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
         if (fxRefreshBtn) {
             fxRefreshBtn.addEventListener('click', async () => {
@@ -585,53 +583,50 @@
                     setFormStatus('Verversen mislukt', 'error');
                 }
             });
-        } else {
-            console.warn('Ververs WK knop niet gevonden (fxRefreshBtn is null)');
         }
-                function updateTotals() {
-                    const qty = parseFloat(quantityInput?.value || '0') || 0;
-                    const price = parseFloat(quotePriceInput?.value || '0') || 0;
-                    const gross = qty * price;
-                    if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
-                    const final = parseFloat(finalTotalInput?.value || '0') || 0;
-                    // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
-                    let derived = final - gross;
-                    if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
-                    // Wisselkoers sectie tonen indien munt != EUR
-                    const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
-                    const extra = document.getElementById('currency-extra');
-                    const eurInput = document.getElementById('final-total-eur');
-                    const wkOutput = document.getElementById('wk-output');
-                    const showExtra = cur !== 'EUR';
-                    if (extra) extra.classList.toggle('hidden', !showExtra);
-                    if (showExtra && eurInput && wkOutput) {
-                        const totalEur = parseFloat(eurInput.value || '0') || 0;
-                        if (totalEur > 0 && final > 0) {
-                            const wk = final / totalEur;
-                            wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
-                        } else {
-                            // Probeer FX op te halen wanneer geen directe WK afleiding
-                            try {
-                                fetchFxRate(cur).then(rate => {
-                                    if (rate && isFinite(rate)) {
-                                        wkOutput.value = Number(rate).toFixed(4);
-                                    } else {
-                                        wkOutput.value = '';
-                                    }
-                                });
-                            } catch { wkOutput.value = ''; }
-                        }
-                    } else if (wkOutput) {
-                        wkOutput.value = '';
-                    }
-                    // also mirror into transaction-cost-input for logging if user wants auto-fill
-                    // geen apart kostenveld meer; alleen readonly weergave
+        
+        function updateTotals() {
+            const qty = parseFloat(quantityInput?.value || '0') || 0;
+            const price = parseFloat(quotePriceInput?.value || '0') || 0;
+            const gross = qty * price;
+            if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
+            const final = parseFloat(finalTotalInput?.value || '0') || 0;
+            // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
+            let derived = final - gross;
+            if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
+            // Wisselkoers sectie tonen indien munt != EUR
+            const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+            const extra = document.getElementById('currency-extra');
+            const eurInput = document.getElementById('final-total-eur');
+            const wkOutput = document.getElementById('wk-output');
+            const showExtra = cur !== 'EUR';
+            if (extra) extra.classList.toggle('hidden', !showExtra);
+            if (showExtra && eurInput && wkOutput) {
+                const totalEur = parseFloat(eurInput.value || '0') || 0;
+                if (totalEur > 0 && final > 0) {
+                    const wk = final / totalEur;
+                    wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
+                } else {
+                    // Probeer FX op te halen wanneer geen directe WK afleiding
+                    try {
+                        fetchFxRate(cur).then(rate => {
+                            if (rate && isFinite(rate)) {
+                                wkOutput.value = Number(rate).toFixed(4);
+                            } else {
+                                wkOutput.value = '';
+                            }
+                        });
+                    } catch { wkOutput.value = ''; }
                 }
-                // Recompute on changes
-                [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
-                    if (el) el.addEventListener('input', updateTotals);
-                });
-                updateTotals();
+            } else if (wkOutput) {
+                wkOutput.value = '';
+            }
+        }
+        // Recompute on changes
+        [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
+            if (el) el.addEventListener('input', updateTotals);
+        });
+        if (quantityInput) updateTotals(); // initial
 
         async function fetchFxRate(cur) {
             const code = String(cur||'').toUpperCase();
@@ -697,7 +692,7 @@
                     }
                     currentPortfolio = updated;
                     renderDashboard(currentPortfolio);
-                    setFormStatus('Wisselkoersen ververst', 'success');
+                    setFormStatus('Wisselkoersen verversen voltooid', 'success');
                 }
             } catch (e) {
                 console.error('FX refresh error:', e);
@@ -812,7 +807,6 @@
                 setFormStatus('Dit transactietype volgt later.', 'info');
             }
         }
-        // Verwijderd aparte select/custom logica; één invoerveld met datalist.
         // Init
         updateTransactionUI();
 
@@ -960,7 +954,7 @@
             tbody.innerHTML = '';
 
             if (positions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">Geen aandelen gevonden in portefeuille.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-slate-400">Geen aandelen gevonden in portefeuille.</td></tr>';
             }
 
             positions.forEach(item => {
@@ -1037,6 +1031,8 @@
                                     title="Bekijk transacties">
                                     Transacties
                                 </a>
+                                
+                                ${ IS_HOST ? `
                                 <button type="button"
                                     class="buy-position px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"
                                     data-position-id="${rowId}"
@@ -1059,6 +1055,7 @@
                                     data-fee="${fee}">
                                     Verkopen
                                 </button>
+                                ` : '' }
                             </div>
                         </td>
                     </tr>
@@ -1226,7 +1223,7 @@
             return payload;
         }
     
-       
+        
         async function handlePositionSubmit(event) {
             event.preventDefault();
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
@@ -1500,7 +1497,7 @@
             if (!tradeModal) return;
             tradeContext = {
                 mode,
-            positionId: dataset.positionId || '',
+                positionId: dataset.positionId || '',
                 ticker: dataset.ticker || '',
                 quantity: Number(dataset.quantity) || 0,
                 avgPrice: Number(dataset.avgPrice) || 0,
@@ -1765,32 +1762,50 @@
 
         async function ensureCashRow() {
             if (!ACTIVE_GROUP_ID) return false;
+            // Als je geen host bent, kan je mogelijk geen nieuwe cash row inserten in de DB,
+            // maar de fetchPortfolio logica probeert dit wel. We vangen de error af.
             try {
-                const response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/cash/ensure`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin'
-                });
-                if (!response.ok) {
-                    const payload = await response.json().catch(() => ({}));
-                    throw new Error(payload.error || 'Cashpositie kon niet worden aangemaakt');
+                const lastRow = await fetchLatestCashRow();
+                if (lastRow) {
+                    lastCashRow = lastRow;
+                    return true;
                 }
-                const payload = await response.json().catch(() => null);
-                if (payload?.cash) {
-                    lastCashRow = payload.cash;
-                } else {
-                    lastCashRow = await fetchLatestCashRow();
+                
+                // Als er geen cash row is, probeer hem aan te maken
+                // Dit zal falen als de user geen host is (vanwege backend permissies)
+                const payload = {
+                    ticker: "CASH",
+                    name: "Cash",
+                    sector: "Cash",
+                    quantity: 0,
+                    avg_price: 0,
+                    current_price: 0,
+                    transactiekost: 0,
+                    groep_id: ACTIVE_GROUP_ID
+                };
+                
+                const { data, error } = await supabase.from('Portefeuille').insert([payload]).select();
+                
+                if (error) {
+                    console.warn("Kon geen cash row aanmaken (mogelijk geen rechten):", error);
+                    return false;
                 }
-                return Boolean(lastCashRow);
+                
+                if (data && data[0]) {
+                    lastCashRow = data[0];
+                    return true;
+                }
+                return false;
+                
             } catch (err) {
-                console.error('Cashpositie aanmaken mislukt:', err);
-                setCashStatus(err.message || 'Cashpositie aanmaken mislukt', 'error');
+                console.error('Cashpositie check mislukt:', err);
                 return false;
             }
         }
 
         function setCashControlsState(enabled) {
-            const flag = enabled && ACTIVE_GROUP_ID;
+            // Check ook of de user HOST is!
+            const flag = enabled && ACTIVE_GROUP_ID && IS_HOST;
             if (cashAdjustInput) cashAdjustInput.disabled = !flag;
             if (cashAddBtn) cashAddBtn.disabled = !flag;
             if (cashRemoveBtn) cashRemoveBtn.disabled = !flag;
@@ -1814,15 +1829,14 @@
                 return;
             }
             if (!lastCashRow) {
-                setCashStatus('Cashpositie niet gevonden, opnieuw aanmaken...', 'info');
+                setCashStatus('Cashpositie niet gevonden, opnieuw laden...', 'info');
                 await ensureCashRow();
                 lastCashRow = await fetchLatestCashRow();
                 if (!lastCashRow) {
-                    setCashStatus('Cashpositie kon niet worden hersteld.', 'error');
+                    setCashStatus('Cashpositie kon niet worden gevonden.', 'error');
                     return;
                 }
                 updateCashCard(Number(lastCashRow.current_price) || 0);
-                setCashStatus('Cashpositie hersteld. Transactie verwerken...', 'success');
             }
             const raw = parseFloat(cashAdjustInput?.value || '0');
             if (!raw || raw <= 0) {
@@ -1849,6 +1863,11 @@
             }
             if (cashAdjustInput) cashAdjustInput.value = '';
             setCashStatus('Cash aangepast', 'success');
+            
+            // Log cash transactie (via backend, maar hier voor UI feedback)
+            // Eigenlijk doet de backend 'add_cash_transaction' dit via de /cash route
+            // Hier doen we directe manipulatie voor portefuille, idealiter splits je dit
+            
             fetchPortfolio();
         }
 
