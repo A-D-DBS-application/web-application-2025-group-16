@@ -487,3 +487,46 @@ def koersen_updater(group_id):
         
     except Exception as e:
         return False, f"Fout bij updaten koersen: {str(e)}"
+    
+    # In auth.py
+
+def update_member_role(group_id, member_id, new_role):
+    """Update de rol van een groepslid (bijv. naar 'host' of 'member')."""
+    try:
+        # Check eerst of het lid bestaat in de groep
+        response = supabase.table(GROUP_MEMBER_TABLE).update({
+            GROUP_ROLE_COLUMN: new_role
+        }).eq(GROUP_ID_COLUMN, group_id).eq("ledenid", member_id).execute()
+        
+        if response.data:
+            return True, f"Rol succesvol gewijzigd naar {new_role}"
+        return False, "Kon rol niet wijzigen (lid niet gevonden of error)."
+    except Exception as e:
+        return False, str(e)
+
+# Zorg er ook voor dat je in de bestaande functie 'get_membership_for_user_in_group' 
+# zeker weet dat de 'rol' wordt opgehaald (dat gebeurt al door select("*")).
+
+# --- IN auth.py ---
+
+# Voeg deze functie toe om aanvragen af te wijzen
+def reject_group_request(req_id, host_id):
+    try:
+        # We zetten de status op 'rejected' (of je kan .delete() gebruiken als je het weg wilt)
+        supabase.table("groepsaanvragen").update({
+            "status": "rejected",
+            "processed_by": host_id
+        }).eq("id", req_id).execute()
+        return True, "Aanvraag afgewezen."
+    except Exception as e:
+        return False, str(e)
+
+# Voeg deze functie toe om rollen aan te passen (Host maken)
+def update_member_role(group_id, member_id, new_role):
+    try:
+        response = supabase.table("groep_leden").update({
+            "rol": new_role
+        }).eq("groep_id", group_id).eq("ledenid", member_id).execute()
+        return True, f"Rol gewijzigd naar {new_role}."
+    except Exception as e:
+        return False, str(e)
