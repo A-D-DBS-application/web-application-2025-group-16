@@ -396,6 +396,12 @@
                         <i data-lucide="list" class="h-5 w-5 text-slate-400"></i>
                         Huidige Posities
                     </h3>
+                    <div class="flex items-center gap-2">
+                        <button id="fx-refresh-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+                            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                            Ververs WK
+                        </button>
+                    </div>
                 </div>
                 <div class="overflow-x-auto flex-grow">
                     <table class="w-full text-sm text-left">
@@ -544,6 +550,7 @@
         const aiContent = document.getElementById('ai-content');
         const realizedProfitEl = document.getElementById('realized-profit');
         const realizedCountEl = document.getElementById('realized-count');
+        const fxRefreshBtn = document.getElementById('fx-refresh-btn');
 
         const QUOTE_ENDPOINT = '/api/quote/';
         let lastQuote = null;
@@ -576,53 +583,50 @@
                     setFormStatus('Verversen mislukt', 'error');
                 }
             });
-        } else {
-            console.warn('Ververs WK knop niet gevonden (fxRefreshBtn is null)');
         }
-                function updateTotals() {
-                    const qty = parseFloat(quantityInput?.value || '0') || 0;
-                    const price = parseFloat(quotePriceInput?.value || '0') || 0;
-                    const gross = qty * price;
-                    if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
-                    const final = parseFloat(finalTotalInput?.value || '0') || 0;
-                    // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
-                    let derived = final - gross;
-                    if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
-                    // Wisselkoers sectie tonen indien munt != EUR
-                    const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
-                    const extra = document.getElementById('currency-extra');
-                    const eurInput = document.getElementById('final-total-eur');
-                    const wkOutput = document.getElementById('wk-output');
-                    const showExtra = cur !== 'EUR';
-                    if (extra) extra.classList.toggle('hidden', !showExtra);
-                    if (showExtra && eurInput && wkOutput) {
-                        const totalEur = parseFloat(eurInput.value || '0') || 0;
-                        if (totalEur > 0 && final > 0) {
-                            const wk = final / totalEur;
-                            wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
-                        } else {
-                            // Probeer FX op te halen wanneer geen directe WK afleiding
-                            try {
-                                fetchFxRate(cur).then(rate => {
-                                    if (rate && isFinite(rate)) {
-                                        wkOutput.value = Number(rate).toFixed(4);
-                                    } else {
-                                        wkOutput.value = '';
-                                    }
-                                });
-                            } catch { wkOutput.value = ''; }
-                        }
-                    } else if (wkOutput) {
-                        wkOutput.value = '';
-                    }
-                    // also mirror into transaction-cost-input for logging if user wants auto-fill
-                    // geen apart kostenveld meer; alleen readonly weergave
+        
+        function updateTotals() {
+            const qty = parseFloat(quantityInput?.value || '0') || 0;
+            const price = parseFloat(quotePriceInput?.value || '0') || 0;
+            const gross = qty * price;
+            if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
+            const final = parseFloat(finalTotalInput?.value || '0') || 0;
+            // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
+            let derived = final - gross;
+            if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
+            // Wisselkoers sectie tonen indien munt != EUR
+            const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+            const extra = document.getElementById('currency-extra');
+            const eurInput = document.getElementById('final-total-eur');
+            const wkOutput = document.getElementById('wk-output');
+            const showExtra = cur !== 'EUR';
+            if (extra) extra.classList.toggle('hidden', !showExtra);
+            if (showExtra && eurInput && wkOutput) {
+                const totalEur = parseFloat(eurInput.value || '0') || 0;
+                if (totalEur > 0 && final > 0) {
+                    const wk = final / totalEur;
+                    wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
+                } else {
+                    // Probeer FX op te halen wanneer geen directe WK afleiding
+                    try {
+                        fetchFxRate(cur).then(rate => {
+                            if (rate && isFinite(rate)) {
+                                wkOutput.value = Number(rate).toFixed(4);
+                            } else {
+                                wkOutput.value = '';
+                            }
+                        });
+                    } catch { wkOutput.value = ''; }
                 }
-                // Recompute on changes
-                [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
-                    if (el) el.addEventListener('input', updateTotals);
-                });
-                updateTotals();
+            } else if (wkOutput) {
+                wkOutput.value = '';
+            }
+        }
+        // Recompute on changes
+        [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
+            if (el) el.addEventListener('input', updateTotals);
+        });
+        if (quantityInput) updateTotals(); // initial
 
         async function fetchFxRate(cur) {
             const code = String(cur||'').toUpperCase();
@@ -688,7 +692,7 @@
                     }
                     currentPortfolio = updated;
                     renderDashboard(currentPortfolio);
-                    setFormStatus('Wisselkoersen ververst', 'success');
+                    setFormStatus('Wisselkoersen verversen voltooid', 'success');
                 }
             } catch (e) {
                 console.error('FX refresh error:', e);
@@ -833,8 +837,9 @@
 
                 // Vul ontbrekende munt/wisselkoers vanuit laatste transactie per ticker
                 const enriched = await augmentPortfolioCurrencies(data);
-                currentPortfolio = enriched; // Opslag voor AI
-                renderDashboard(enriched);
+                const withQuoteCurrencies = await augmentWithQuoteCurrencies(enriched);
+                currentPortfolio = withQuoteCurrencies; // Opslag voor AI
+                renderDashboard(currentPortfolio);
                 // Update Realized Profit card
                 fetchRealizedProfit();
             } catch (err) {
@@ -853,9 +858,6 @@
                 // Sla CASH over
                 const t = String(row.ticker||'').toUpperCase();
                 if (t === 'CASH') { result.push(row); continue; }
-                const hasCur = Boolean(row.munt || row.currency);
-                const hasWk = !isNaN(Number(row.wisselkoers));
-                if (hasCur && hasWk) { result.push(row); continue; }
                 try {
                     const { data: txs, error } = await supabase
                         .from('Transacties')
@@ -865,16 +867,43 @@
                         .limit(1);
                     if (!error && txs && txs.length > 0) {
                         const tx = txs[0];
-                        const cur = tx.munt || row.munt || row.currency || 'EUR';
-                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : row.wisselkoers);
-                        // Alleen voor weergave verrijken; niet opslaan in Portefeuille
-                        row.munt = cur;
-                        row.currency = cur;
+                        const cur = String(row.munt || tx.munt || '');
+                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : undefined);
+                        // Gebruik altijd de munt uit Portefeuille; niet overschrijven met quote/tx
                         if (!isNaN(wk)) row.wisselkoers = wk;
                     }
                 } catch (e) {
                     // negeer en gebruik bestaande waarden
                 }
+                result.push(row);
+            }
+            return result;
+        }
+
+        async function augmentWithQuoteCurrencies(rows) {
+            if (!Array.isArray(rows) || rows.length === 0) return rows;
+            const result = [];
+            const cache = new Map();
+            for (const row of rows) {
+                const t = String(row.ticker||'').toUpperCase();
+                if (t === 'CASH') { result.push(row); continue; }
+                try {
+                    let q = cache.get(t);
+                    if (!q) {
+                        const resp = await fetch(`${QUOTE_ENDPOINT}${encodeURIComponent(t)}`);
+                        q = await resp.json();
+                        cache.set(t, q);
+                    }
+                    const dbCur = String(row.munt || '').toUpperCase();
+                    if (dbCur) {
+                        if (dbCur === 'EUR') {
+                            row.wisselkoers = 1;
+                        } else {
+                            const fx = await fetchFxRate(dbCur);
+                            if (fx && isFinite(fx)) row.wisselkoers = Number(fx);
+                        }
+                    }
+                } catch {}
                 result.push(row);
             }
             return result;
@@ -965,17 +994,26 @@
                         <td class="px-6 py-4 text-slate-600">${(function(){
                             const t = String(item.ticker||'').toUpperCase();
                             if (t === 'CASH') return 'EUR';
-                            const cur = item.munt || item.currency;
+                            const cur = String(item.munt || item.currency || '').toUpperCase();
                             if (cur) return cur;
-                            // Fallback: if WK explicitly 1, assume EUR
-                            const wk = Number(item.wisselkoers);
-                            if (!isNaN(wk) && wk === 1) return 'EUR';
-                            return 'EUR';
+                            return '—';
                         })()}</td>
                         <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
                         <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${(item.wisselkoers ?? 1).toFixed ? (item.wisselkoers ?? 1).toFixed(4) : (Number(item.wisselkoers) ? Number(item.wisselkoers).toFixed(4) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? '1.0000' : '—'))}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${(Number(item.wisselkoers) ? eur.format(price / Number(item.wisselkoers)) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? eur.format(price) : '—'))}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(function(){
+                            const wk = Number(item.wisselkoers);
+                            const cur = String(item.munt||item.currency||'').toUpperCase();
+                            if (cur === 'EUR') return '1.0000';
+                            if (!isNaN(wk) && wk > 0) return wk.toFixed(4);
+                            return '—';
+                        })()}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(function(){
+                            const wk = Number(item.wisselkoers);
+                            const cur = String(item.munt||item.currency||'').toUpperCase();
+                            if (cur === 'EUR') return eur.format(price);
+                            if (!isNaN(wk) && wk > 0) return eur.format(price / wk);
+                            return '—';
+                        })()}</td>
                         <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>
                         <td class="px-6 py-4 text-right">
                             <div class="${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold">
