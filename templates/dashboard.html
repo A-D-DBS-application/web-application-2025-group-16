@@ -398,12 +398,6 @@
                         <i data-lucide="list" class="h-5 w-5 text-slate-400"></i>
                         Huidige Posities
                     </h3>
-                    <div class="flex items-center gap-2">
-                        <button id="fx-refresh-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
-                            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                            Ververs WK
-                        </button>
-                    </div>
                 </div>
                 <div class="overflow-x-auto flex-grow">
                     <table class="w-full text-sm text-left">
@@ -555,7 +549,6 @@
         const aiContent = document.getElementById('ai-content');
         const realizedProfitEl = document.getElementById('realized-profit');
         const realizedCountEl = document.getElementById('realized-count');
-        const fxRefreshBtn = document.getElementById('fx-refresh-btn');
 
         const QUOTE_ENDPOINT = '/api/quote/';
         let lastQuote = null;
@@ -575,19 +568,6 @@
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
         document.addEventListener('click', handleTableAction);
         if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
-        if (fxRefreshBtn) {
-            fxRefreshBtn.addEventListener('click', async () => {
-                try {
-                    setFormStatus('Wisselkoersen verversen...', 'info');
-                    await refreshAllFxRates();
-                } catch (e) {
-                    console.error('Ververs WK klik fout:', e);
-                    setFormStatus('Verversen mislukt', 'error');
-                }
-            });
-        } else {
-            console.warn('Ververs WK knop niet gevonden (fxRefreshBtn is null)');
-        }
                 function updateTotals() {
                     const qty = parseFloat(quantityInput?.value || '0') || 0;
                     const price = parseFloat(quotePriceInput?.value || '0') || 0;
@@ -643,65 +623,6 @@
                 return Number(data.rate) || null;
             } catch {
                 return null;
-            }
-        }
-
-        async function refreshAllFxRates() {
-            try {
-                // 1) Haal alle munten uit Wisselkoersen
-                if (!window.supabase) {
-                    console.warn('Supabase client niet beschikbaar');
-                    return;
-                }
-                const { data: currencies, error: curErr } = await supabase
-                    .from('Wisselkoersen')
-                    .select('wk_id, munt');
-                if (curErr) {
-                    console.warn('Kon munten niet ophalen uit Wisselkoersen:', curErr);
-                    setFormStatus('Kon munten niet ophalen (Wisselkoersen)', 'error');
-                    // Ga verder met alleen UI update op basis van huidige portfolio
-                }
-                const cache = new Map();
-                // 2) Voor elke munt: haal FX rate en update tabel
-                if (currencies && currencies.length > 0) {
-                    for (const row of currencies) {
-                        const c = String(row.munt || '').toUpperCase();
-                        if (!c || c === 'EUR') continue;
-                        let rate = cache.get(c);
-                        if (!rate) {
-                            rate = await fetchFxRate(c);
-                            if (rate) cache.set(c, rate);
-                        }
-                        if (rate && isFinite(rate)) {
-                            const { data: updData, error: updErr } = await supabase
-                                .from('Wisselkoersen')
-                                .update({ wk: Number(rate) })
-                                .eq('munt', c)
-                                .select();
-                            if (updErr) console.warn('Wisselkoersen update fout voor', c, updErr);
-                            else console.log('Wisselkoersen bijgewerkt', c, Number(rate), updData);
-                        }
-                    }
-                } else {
-                    console.info('Geen munten gevonden in Wisselkoersen.');
-                }
-                // 3) Update lokale dashboard waarden voor huidige portfolio
-                if (currentPortfolio && currentPortfolio.length > 0) {
-                    const updated = [];
-                    for (const row of currentPortfolio) {
-                        const cur = String(row.munt || row.currency || 'EUR').toUpperCase();
-                        if (!cur || cur === 'EUR') { row.wisselkoers = 1; updated.push(row); continue; }
-                        const r = cache.get(cur);
-                        if (r && isFinite(r)) row.wisselkoers = Number(r);
-                        updated.push(row);
-                    }
-                    currentPortfolio = updated;
-                    renderDashboard(currentPortfolio);
-                    setFormStatus('Wisselkoersen ververst', 'success');
-                }
-            } catch (e) {
-                console.error('FX refresh error:', e);
-                setFormStatus('Verversen mislukt', 'error');
             }
         }
         // Voorzie standaard huidige datum/tijd
@@ -843,9 +764,8 @@
 
                 // Vul ontbrekende munt/wisselkoers vanuit laatste transactie per ticker
                 const enriched = await augmentPortfolioCurrencies(data);
-                const withQuoteCurrencies = await augmentWithQuoteCurrencies(enriched);
-                currentPortfolio = withQuoteCurrencies; // Opslag voor AI
-                renderDashboard(currentPortfolio);
+                currentPortfolio = enriched; // Opslag voor AI
+                renderDashboard(enriched);
                 // Update Realized Profit card
                 fetchRealizedProfit();
             } catch (err) {
@@ -864,6 +784,9 @@
                 // Sla CASH over
                 const t = String(row.ticker||'').toUpperCase();
                 if (t === 'CASH') { result.push(row); continue; }
+                const hasCur = Boolean(row.munt || row.currency);
+                const hasWk = !isNaN(Number(row.wisselkoers));
+                if (hasCur && hasWk) { result.push(row); continue; }
                 try {
                     const { data: txs, error } = await supabase
                         .from('Transacties')
@@ -873,43 +796,16 @@
                         .limit(1);
                     if (!error && txs && txs.length > 0) {
                         const tx = txs[0];
-                        const cur = String(row.munt || tx.munt || '');
-                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : undefined);
-                        // Gebruik altijd de munt uit Portefeuille; niet overschrijven met quote/tx
+                        const cur = tx.munt || row.munt || row.currency || 'EUR';
+                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : row.wisselkoers);
+                        // Alleen voor weergave verrijken; niet opslaan in Portefeuille
+                        row.munt = cur;
+                        row.currency = cur;
                         if (!isNaN(wk)) row.wisselkoers = wk;
                     }
                 } catch (e) {
                     // negeer en gebruik bestaande waarden
                 }
-                result.push(row);
-            }
-            return result;
-        }
-
-        async function augmentWithQuoteCurrencies(rows) {
-            if (!Array.isArray(rows) || rows.length === 0) return rows;
-            const result = [];
-            const cache = new Map();
-            for (const row of rows) {
-                const t = String(row.ticker||'').toUpperCase();
-                if (t === 'CASH') { result.push(row); continue; }
-                try {
-                    let q = cache.get(t);
-                    if (!q) {
-                        const resp = await fetch(`${QUOTE_ENDPOINT}${encodeURIComponent(t)}`);
-                        q = await resp.json();
-                        cache.set(t, q);
-                    }
-                    const dbCur = String(row.munt || '').toUpperCase();
-                    if (dbCur) {
-                        if (dbCur === 'EUR') {
-                            row.wisselkoers = 1;
-                        } else {
-                            const fx = await fetchFxRate(dbCur);
-                            if (fx && isFinite(fx)) row.wisselkoers = Number(fx);
-                        }
-                    }
-                } catch {}
                 result.push(row);
             }
             return result;
@@ -1000,26 +896,17 @@
                         <td class="px-6 py-4 text-slate-600">${(function(){
                             const t = String(item.ticker||'').toUpperCase();
                             if (t === 'CASH') return 'EUR';
-                            const cur = String(item.munt || item.currency || '').toUpperCase();
+                            const cur = item.munt || item.currency;
                             if (cur) return cur;
-                            return '—';
+                            // Fallback: if WK explicitly 1, assume EUR
+                            const wk = Number(item.wisselkoers);
+                            if (!isNaN(wk) && wk === 1) return 'EUR';
+                            return 'EUR';
                         })()}</td>
                         <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
                         <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${(function(){
-                            const wk = Number(item.wisselkoers);
-                            const cur = String(item.munt||item.currency||'').toUpperCase();
-                            if (cur === 'EUR') return '1.0000';
-                            if (!isNaN(wk) && wk > 0) return wk.toFixed(4);
-                            return '—';
-                        })()}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${(function(){
-                            const wk = Number(item.wisselkoers);
-                            const cur = String(item.munt||item.currency||'').toUpperCase();
-                            if (cur === 'EUR') return eur.format(price);
-                            if (!isNaN(wk) && wk > 0) return eur.format(price / wk);
-                            return '—';
-                        })()}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(item.wisselkoers ?? 1).toFixed ? (item.wisselkoers ?? 1).toFixed(4) : (Number(item.wisselkoers) ? Number(item.wisselkoers).toFixed(4) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? '1.0000' : '—'))}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${(Number(item.wisselkoers) ? eur.format(price / Number(item.wisselkoers)) : (String(item.munt||item.currency||'EUR').toUpperCase()==='EUR' ? eur.format(price) : '—'))}</td>
                         <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>
                         <td class="px-6 py-4 text-right">
                             <div class="${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold">

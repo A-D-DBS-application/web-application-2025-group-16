@@ -55,19 +55,6 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
         except Exception:
             dt_value = None
 
-        # Zorg dat currency steeds is ingevuld; indien leeg, haal op via Yahoo
-        try:
-            cur = (currency or "").strip().upper()
-            if not cur:
-                r = requests.get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}", timeout=6)
-                j = r.json()
-                q = (j.get("quoteResponse", {}) or {}).get("result", [])
-                if q:
-                    cur = (q[0].get("currency") or "EUR").upper()
-            currency = cur or "EUR"
-        except Exception:
-            currency = (currency or "EUR").upper()
-
         payload = {
             "aantal": amount,
             "ticker": ticker,
@@ -82,22 +69,6 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
             payload["datum_tr"] = dt_value
         response = supabase.table(TRANSACTION_TABLE).insert(payload).execute()
         if response.data:
-            # Zorg dat Portefeuille.munt gezet wordt voor deze positie
-            try:
-                cur = (currency or "EUR").upper()
-                if portfolio_id:
-                    supabase.table(PORTFOLIO_TABLE).update({"munt": cur}).eq("port_id", portfolio_id).execute()
-                else:
-                    supabase.table(PORTFOLIO_TABLE).update({"munt": cur}).eq("ticker", (ticker or "").upper()).execute()
-                # Voeg munt toe aan Wisselkoersen indien niet aanwezig (WK pas bij refresh)
-                try:
-                    w = supabase.table("Wisselkoersen").select("munt").eq("munt", cur).limit(1).execute()
-                    if not (w.data and len(w.data) > 0):
-                        supabase.table("Wisselkoersen").insert({"munt": cur}).execute()
-                except Exception as _we:
-                    logging.warning(f"Kon munt '{cur}' niet upserten in Wisselkoersen: {_we}")
-            except Exception as _e:
-                logging.warning(f"Kon Portefeuille.munt niet bijwerken: {_e}")
             return True, response.data[0]
         return False, "Insert mislukt"
     except Exception as e:
@@ -494,16 +465,22 @@ def koersen_updater(group_id):
             elif currency == "EUR":
                 fx_rate = 1.0
 
-            # Update alleen de huidige prijs (kolom wisselkoers bestaat niet meer)
-            if current_price is not None:
+            # Update positie met prijs en eventuele wisselkoers
+            if current_price or fx_rate is not None:
                 row_id = pos.get('port_id') or pos.get('id')
                 if row_id:
                     payload = {}
-                    payload["current_price"] = current_price
+                    if current_price:
+                        payload["current_price"] = current_price
+                    if fx_rate is not None:
+                        payload["wisselkoers"] = fx_rate
                     supabase.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
                     updated_count += 1
                     msg_parts = []
-                    msg_parts.append(f"prijs {current_price:.2f}")
+                    if current_price:
+                        msg_parts.append(f"prijs {current_price:.2f}")
+                    if fx_rate is not None:
+                        msg_parts.append(f"WK {fx_rate:.4f}")
                     print(f"✅ {ticker} geupdate: {', '.join(msg_parts)}")
                 
         return True, f"{updated_count} koersen succesvol bijgewerkt."
