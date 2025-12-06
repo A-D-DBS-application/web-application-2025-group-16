@@ -1,3 +1,4 @@
+# Ik heb alle logica van Yahoo Finance, de HTTP-fallback (voor als de library faalt) en het ophalen van wisselkoersen hierin samengevoegd.
 import os
 import requests
 import logging

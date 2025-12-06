@@ -1,3 +1,4 @@
+#Alle login/registratie logica.
 from flask import Blueprint, render_template, request, redirect, url_for, session
 # We importeren jouw bestaande functies uit auth.py (die staat in de map erboven)
 from auth import sign_in_user, sign_up_user

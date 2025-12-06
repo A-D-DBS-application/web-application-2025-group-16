@@ -1,3 +1,4 @@
+# Alles wat met groepen te maken heeft.
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 import secrets
 # Importeer functies uit jouw auth.py en config

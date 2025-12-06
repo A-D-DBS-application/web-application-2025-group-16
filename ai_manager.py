@@ -1,3 +1,4 @@
+#De logica voor Gemini, veilig afgeschermd
 import os
 import google.generativeai as genai
 import re

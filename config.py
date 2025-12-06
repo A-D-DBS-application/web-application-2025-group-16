@@ -1,3 +1,4 @@
+#Dit bestand regelt alle verbindingen. Iedereen haalt hier zijn supabase client vandaan.
 import os
 from dotenv import load_dotenv
 from supabase import create_client as create_supabase_client
