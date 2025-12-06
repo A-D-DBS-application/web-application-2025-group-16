@@ -7,8 +7,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-slate-50 font-sans text-slate-800 flex items-center justify-center min-h-screen px-4">
-     <!-- FLASH MESSAGES -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
+     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="space-y-2 mb-6 fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md">
           {% for category, message in messages %}
@@ -28,7 +27,6 @@
         </div>
       {% endif %}
     {% endwith %}
-    <!-- END FLASH -->
     <div class="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 max-w-3xl w-full">
         <div class="flex flex-col gap-6">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -54,7 +52,7 @@
                     <div class="bg-white rounded-xl px-4 py-2 text-center text-sm text-slate-500">
                         Code<br><span class="text-slate-900 font-semibold">{{ group_snapshot.code }}</span>
                     </div>
-                    <a href="/groups/current" class="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow">
+                    <a href="{{ url_for('groups.group_dashboard') }}" class="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow">
                         <i data-lucide="external-link" class="h-5 w-5"></i>
                         Open groepspagina
                     </a>
@@ -63,7 +61,7 @@
             {% endif %}
 
             <div class="grid md:grid-cols-3 gap-4">
-                <a href="/groups/create" class="group-action-card">
+                <a href="{{ url_for('groups.create_group') }}" class="group-action-card">
                     <div class="icon-circle text-blue-600 bg-blue-50">
                         <i data-lucide="plus-circle" class="h-6 w-6"></i>
                     </div>
@@ -72,7 +70,7 @@
                         <p>Start een gloednieuwe investeringsgroep.</p>
                     </div>
                 </a>
-                <a href="/groups/join" class="group-action-card">
+                <a href="{{ url_for('groups.join_group') }}" class="group-action-card">
                     <div class="icon-circle text-emerald-600 bg-emerald-50">
                         <i data-lucide="users" class="h-6 w-6"></i>
                     </div>
@@ -81,7 +79,7 @@
                         <p>Gebruik een uitnodigingscode om mee te doen.</p>
                     </div>
                 </a>
-                <a href="/logout" class="group-action-card">
+                <a href="{{ url_for('auth.logout') }}" class="group-action-card">
                     <div class="icon-circle text-rose-600 bg-rose-50">
                         <i data-lucide="log-out" class="h-6 w-6"></i>
                     </div>
@@ -127,7 +125,7 @@
                                     {{ "lid" if members == 1 else "leden" }}
                                 </p>
                             </div>
-                            <form method="post" action="/groups/select/{{ group.id }}" class="open-group-form">
+                            <form method="post" action="{{ url_for('groups.select_group', group_id=group.id) }}" class="open-group-form">
                                 <button type="submit" class="open-group-btn" {% if group.is_current %}disabled{% endif %}>
                                     {% if group.is_current %}Geopend{% else %}Open groep{% endif %}
                                 </button>

@@ -14,7 +14,7 @@
                 <h1 class="text-3xl font-bold text-slate-900">Bij een groep aansluiten</h1>
                 <p class="text-slate-500">Vraag de host om de code en vul die hieronder in.</p>
             </div>
-            <a href="/home" class="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-blue-600">
+            <a href="{{ url_for('main.home') }}" class="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-blue-600">
                 <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 Terug naar home
             </a>
@@ -26,10 +26,10 @@
         </div>
         {% endif %}
 
-        <form method="post" class="space-y-6">
+        <form method="post" action="{{ url_for('groups.join_group') }}" class="space-y-6">
             <div>
                 <label for="code" class="block text-sm font-semibold text-slate-700">Uitnodigingscode</label>
-                <input id="code" name="code" type="text" required value="{{ code_value }}" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 uppercase tracking-widest" placeholder="PLN4X7">
+                <input id="code" name="code" type="text" required value="{{ code_value or '' }}" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 uppercase tracking-widest" placeholder="PLN4X7">
             </div>
 
             <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl px-6 py-3 shadow">
@@ -39,7 +39,7 @@
         </form>
 
         <p class="text-center text-sm text-slate-500">
-            Nog geen code? <a href="/groups/create" class="text-blue-600 font-semibold">Start een eigen groep</a>.
+            Nog geen code? <a href="{{ url_for('groups.create_group') }}" class="text-blue-600 font-semibold">Start een eigen groep</a>.
         </p>
     </div>
 

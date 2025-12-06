@@ -28,7 +28,7 @@
             <div class="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{{ error }}</div>
             {% endif %}
 
-            <form method="post" action="{{ url_for('login') }}" id="authForm" class="space-y-5">
+            <form method="post" action="{{ url_for('auth.login') }}" id="authForm" class="space-y-5">
                 <div>
                     <label for="email" class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2">Emailadres</label>
                     <input type="email" id="email" name="email" placeholder="you@example.com" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" value="{{ email_value|default('') }}">
@@ -39,7 +39,7 @@
                 </button>
             </form>
 
-            <p class="text-center text-sm text-slate-500">Wil je enkel rondkijken? <a href="{{ url_for('home') }}" class="text-blue-600 font-semibold">Terug naar home</a></p>
+            <p class="text-center text-sm text-slate-500">Wil je enkel rondkijken? <a href="{{ url_for('main.home') }}" class="text-blue-600 font-semibold">Terug naar home</a></p>
         </div>
     </div>
 
@@ -49,7 +49,8 @@
             if (!btn) return;
             btn.addEventListener('click', () => {
                 const emailValue = document.getElementById('email').value || '';
-                const target = `{{ url_for('register') }}${emailValue ? `?email=${encodeURIComponent(emailValue)}` : ''}`;
+                // AANGEPAST: Javascript URL generatie naar auth.register
+                const target = `{{ url_for('auth.register') }}${emailValue ? `?email=${encodeURIComponent(emailValue)}` : ''}`;
                 window.location.href = target;
             });
         })();

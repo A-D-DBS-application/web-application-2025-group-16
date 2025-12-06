@@ -2,30 +2,51 @@
 <html lang="nl">
 <head>
     <meta charset="UTF-8">
-    <title>Beleggingsclub</title>
-    
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welkom - Beleggingsclub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4 font-sans text-slate-800">
     
-    <h1>Welkom bij de {{ club_naam }}!</h1>
-    
-    <p>Dit is de hoofdpagina.</p>
-    
-    <p>
-        <a href="{{ url_for('inloggen') }}">Nu Inloggen</a>
-    </p>
+    <div class="bg-white border border-slate-200 shadow-xl rounded-2xl w-full max-w-md p-8 text-center space-y-6">
+        
+        <div class="flex justify-center mb-4">
+            <div class="p-4 bg-blue-50 rounded-full text-blue-600">
+                <i data-lucide="trending-up" class="h-10 w-10"></i>
+            </div>
+        </div>
 
-</body>
-</html>
-<body>
-    <h1>Welkom bij de {{ club_naam }}!</h1>
-    <p>Dit is de hoofdpagina.</p>
-    
-    <p>
-        <a href="{{ url_for('portfolio') }}">Ga naar mijn portfolio</a>
-    </p>
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">
+                Welkom bij {{ club_naam or 'InvestClub' }}!
+            </h1>
+            <p class="text-slate-500">
+                Dit is de hoofdpagina van de beleggingsclub.
+            </p>
+        </div>
 
+        <div class="space-y-3 pt-4">
+            {% if session.get('user_id') %}
+                <a href="{{ url_for('main.portfolio') }}" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow transition-colors">
+                    <i data-lucide="pie-chart" class="h-5 w-5"></i>
+                    Ga naar mijn portfolio
+                </a>
+            {% else %}
+                <a href="{{ url_for('auth.login') }}" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow transition-colors">
+                    <i data-lucide="log-in" class="h-5 w-5"></i>
+                    Nu Inloggen
+                </a>
+                
+                <a href="{{ url_for('auth.register') }}" class="flex items-center justify-center gap-2 w-full py-3 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-semibold transition-colors">
+                    Registreren
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
 </body>
 </html>

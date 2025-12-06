@@ -1,22 +1,80 @@
-<!doctype html>
-<html>
-<head><title>Leden</title></head>
-<body>
-<h2>Leden</h2>
-<p><a href="/logout">Logout</a></p>
-<table border="1" cellpadding="4">
-  <tr>
-    <th>ledenid</th><th>voornaam</th><th>achternaam</th><th>GSM</th><th>created_at</th>
-  </tr>
-  {% for row in leden %}
-  <tr>
-    <td>{{ row.ledenid }}</td>
-    <td>{{ row.voornaam }}</td>
-    <td>{{ row.achternaam }}</td>
-    <td>{{ row.GSM }}</td>
-    <td>{{ row.created_at }}</td>
-  </tr>
-  {% endfor %}
-</table>
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Ledenlijst - InvestClub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    {% include '_nav.html' %}
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Ledenlijst</h1>
+                <p class="text-slate-500 text-sm">Een overzicht van alle geregistreerde gebruikers op het platform.</p>
+            </div>
+            <div class="bg-white px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 shadow-sm">
+                Totaal: <span class="text-slate-900 font-bold">{{ leden|length if leden else 0 }}</span>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
+            <i data-lucide="alert-circle" class="h-5 w-5"></i>
+            <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-100">
+                        <tr>
+                            <th class="px-6 py-4">ID</th>
+                            <th class="px-6 py-4">Naam</th>
+                            <th class="px-6 py-4">GSM</th>
+                            <th class="px-6 py-4">Geregistreerd op</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% if leden %}
+                            {% for row in leden %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-slate-400 font-mono text-xs">
+                                    #{{ row.ledenid }}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="font-medium text-slate-900">{{ row.voornaam }} {{ row.achternaam }}</div>
+                                    <div class="text-xs text-slate-400">{{ row.email }}</div>
+                                </td>
+                                <td class="px-6 py-4 text-slate-600">
+                                    {{ row.GSM or '-' }}
+                                </td>
+                                <td class="px-6 py-4 text-slate-400 text-xs">
+                                    {{ row.created_at or 'Onbekend' }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="4" class="px-6 py-10 text-center text-slate-400 italic">
+                                    Geen leden gevonden.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
 </body>
 </html>

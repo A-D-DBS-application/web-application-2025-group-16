@@ -4,54 +4,93 @@
     <meta charset="UTF-8">
     <title>Transacties</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-slate-100 text-slate-800">
+<body class="bg-slate-50 text-slate-800 font-sans">
+    
     {% include '_nav.html' %}
-    <main class="max-w-6xl mx-auto px-4 pb-16">
-        <h1 class="text-2xl font-bold mb-4">Transactie-overzicht</h1>
-        {% if group_id or port_id %}
-        <p class="text-slate-500 text-sm mb-2">
-            {% if group_id %}Voor groep ID {{ group_id }}{% endif %}
-            {% if port_id %} — Portefeuille ID {{ port_id }}{% endif %}
-        </p>
-        {% endif %}
-        <p class="text-slate-500 text-sm mb-6">Historiek van uitgevoerde portefeuille transacties.</p>
-        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-slate-600 uppercase text-xs">
-                    <tr>
-                        <th class="px-4 py-3 text-left">Datum</th>
-                        <th class="px-4 py-3 text-left">Type</th>
-                        <th class="px-4 py-3 text-left">Ticker</th>
-                        <th class="px-4 py-3 text-right">Aantal</th>
-                        <th class="px-4 py-3 text-right">Koers</th>
-                        <th class="px-4 py-3 text-right">Waarde (€)</th>
-                        <th class="px-4 py-3 text-left">Munt</th>
-                        <th class="px-4 py-3 text-right">Wisselkoers</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                {% if transactions and transactions|length > 0 %}
-                    {% for tx in transactions %}
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-2">{{ tx.datum_tr or tx.created_at or '' }}</td>
-                        <td class="px-4 py-2 font-semibold {{ 'text-emerald-600' if tx.type=='BUY' else 'text-rose-600' if tx.type=='SELL' else 'text-slate-600' }}">{{ tx.type }}</td>
-                        <td class="px-4 py-2">{{ tx.ticker }}</td>
-                        <td class="px-4 py-2 text-right">{{ tx.aantal }}</td>
-                        <td class="px-4 py-2 text-right">€ {{ '%.2f'|format(tx.koers) }}</td>
-                        <td class="px-4 py-2 text-right">€ {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) * (tx.wisselkoers or 1)) }}</td>
-                        <td class="px-4 py-2">{{ tx.munt or 'EUR' }}</td>
-                        <td class="px-4 py-2 text-right">{{ tx.wisselkoers or 1 }}</td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="8" class="px-4 py-6 text-center text-slate-400">Geen transacties gevonden.</td>
-                    </tr>
-                {% endif %}
-                </tbody>
-            </table>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 pb-16">
+        <div class="mb-6">
+            <h1 class="text-2xl font-bold text-slate-900">Transactie-overzicht</h1>
+            {% if group_id or port_id %}
+            <p class="text-slate-500 text-sm mt-1">
+                {% if group_id %}Groep ID: <span class="font-mono text-slate-700">{{ group_id }}</span>{% endif %}
+                {% if port_id %} — Portefeuille ID: <span class="font-mono text-slate-700">{{ port_id }}</span>{% endif %}
+            </p>
+            {% endif %}
+            <p class="text-slate-500 text-sm mt-2">Historiek van uitgevoerde portefeuille transacties.</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-100">
+                        <tr>
+                            <th class="px-6 py-4">Datum</th>
+                            <th class="px-6 py-4">Type</th>
+                            <th class="px-6 py-4">Ticker</th>
+                            <th class="px-6 py-4 text-right">Aantal</th>
+                            <th class="px-6 py-4 text-right">Koers</th>
+                            <th class="px-6 py-4 text-right">Waarde (€)</th>
+                            <th class="px-6 py-4">Munt</th>
+                            <th class="px-6 py-4 text-right">Wisselkoers</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                    {% if transactions and transactions|length > 0 %}
+                        {% for tx in transactions %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="px-6 py-4 text-slate-600 whitespace-nowrap">
+                                {{ tx.datum_tr or tx.created_at or '-' }}
+                            </td>
+                            <td class="px-6 py-4 font-bold uppercase text-xs">
+                                {% if tx.type == 'BUY' %}
+                                    <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Buy</span>
+                                {% elif tx.type == 'SELL' %}
+                                    <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Sell</span>
+                                {% elif tx.type == 'FEE' %}
+                                    <span class="text-slate-500 bg-slate-100 px-2 py-1 rounded">Kost</span>
+                                {% else %}
+                                    <span class="text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ tx.type }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 font-semibold text-slate-900">
+                                {{ tx.ticker }}
+                            </td>
+                            <td class="px-6 py-4 text-right text-slate-600 font-mono">
+                                {{ tx.aantal }}
+                            </td>
+                            <td class="px-6 py-4 text-right text-slate-600 font-mono">
+                                {{ '%.2f'|format(tx.koers) }}
+                            </td>
+                            <td class="px-6 py-4 text-right font-bold text-slate-900 font-mono">
+                                {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
+                                € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
+                            </td>
+                            <td class="px-6 py-4 text-slate-500 text-xs">
+                                {{ tx.munt or 'EUR' }}
+                            </td>
+                            <td class="px-6 py-4 text-right text-slate-400 text-xs font-mono">
+                                {{ '%.4f'|format(wk) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="px-6 py-10 text-center text-slate-400 italic">
+                                Geen transacties gevonden.
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
 </body>
 </html>

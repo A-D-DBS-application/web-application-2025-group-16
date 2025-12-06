@@ -1,23 +1,10 @@
-import os
-from supabase import create_client, Client
 import logging
 import requests
-try:
-    import yfinance as yf  # type: ignore
-    YFINANCE_AVAILABLE = True
-except Exception as e:
-    print(f"⚠️ yfinance niet geladen in auth.py ({e}); fallback actief.")
-    yf = None  # type: ignore
-    YFINANCE_AVAILABLE = False
+from config import supabase # <--- Haalt de verbinding nu uit je centrale config
+import yfinance as yf
 
 # --- CONFIGURATIE ---
-SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M"
-
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-    print(f"Supabase init error: {e}")
+# (De keys en URL zijn hier weggehaald omdat ze nu uit config.py komen)
 
 GROUP_TABLE = "Groep"
 GROUP_MEMBER_TABLE = "groep_leden"
@@ -32,15 +19,20 @@ PORTFOLIO_TABLE = "Portefeuille"
 CASH_TX_TABLE = "Kas"
 TRANSACTION_TABLE = "Transacties"
 
-def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR", datum_tr=None):
-    """Logt een transactie in de Transacties tabel.
+# Check of yfinance werkt
+YFINANCE_AVAILABLE = True
+try:
+    import yfinance as yf
+except ImportError:
+    YFINANCE_AVAILABLE = False
 
-    Vereiste kolommen (gepland): transactie_id (PK), datum_tr (timestamptz), aantal, ticker, type,
-    portefeuille_id, koers, wisselkoers, munt.
-    """
+
+def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR", datum_tr=None):
+    """Logt een transactie in de Transacties tabel."""
     try:
         if not portfolio_id and not ticker:
             return False, "Portfolio ID of ticker vereist"
+        
         # Normaliseer of vul datum_tr in (fallback: vandaag 00:00:00Z)
         dt_value = None
         try:
@@ -255,6 +247,16 @@ def approve_group_request(req_id, host_id):
     except Exception as e:
         return False, str(e)
 
+def reject_group_request(req_id, host_id):
+    try:
+        supabase.table("groepsaanvragen").update({
+            "status": "rejected",
+            "processed_by": host_id
+        }).eq("id", req_id).execute()
+        return True, "Aanvraag afgewezen."
+    except Exception as e:
+        return False, str(e)
+
 
 def initialize_cash_position(group_id, amount=0.0):
     try:
@@ -365,10 +367,9 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
         
         if existing.data and len(existing.data) > 0:
             current_row = existing.data[0]
-            # Geen gemiddelde aankoopprijs meer: we verhogen aantallen en houden avg_price op laatste prijs.
             old_qty = float(current_row.get("quantity") or 0)
             new_qty = int(old_qty) + quantity_int
-            new_avg = price  # houd simpel
+            new_avg = price
             
             row_id = current_row.get("port_id") or current_row.get("id")
             if row_id:
@@ -384,7 +385,7 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
                 "ticker": ticker,
                 "name": ticker, 
                 "quantity": quantity_int,
-                "avg_price": price,  # blijft vereist door schema maar gelijk aan current_price
+                "avg_price": price, 
                 "current_price": price,
                 "sector": "Onbekend", 
                 "transactiekost": 0
@@ -399,7 +400,6 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
 def koersen_updater(group_id):
     """Haalt live koersen op via Yahoo Finance en update de database."""
     try:
-        # Haal alle posities van de groep op
         response = supabase.table(PORTFOLIO_TABLE).select("*").eq("groep_id", group_id).execute()
         positions = response.data
         
@@ -426,7 +426,6 @@ def koersen_updater(group_id):
                     print(f"⚠️ yfinance fout voor {ticker}: {e}; probeer HTTP.")
 
             if current_price is None:
-                # HTTP fallback
                 try:
                     url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
                     r = requests.get(url, timeout=5)
@@ -438,7 +437,7 @@ def koersen_updater(group_id):
                 except Exception as e:
                     print(f"⚠️ HTTP fallback fout voor {ticker}: {e}")
 
-            # Bepaal munt en wisselkoers op basis van laatste transactie voor deze ticker
+            # Bepaal munt
             currency = None
             try:
                 tx = supabase.table(TRANSACTION_TABLE).select("munt,ticker").eq("ticker", ticker).order("datum_tr", desc=True).limit(1).execute()
@@ -457,15 +456,15 @@ def koersen_updater(group_id):
                     results = jd.get("quoteResponse", {}).get("result", [])
                     if results:
                         item = results[0]
-                        fx_rate = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
-                        if fx_rate is not None:
-                            fx_rate = float(fx_rate)
+                        val = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
+                        if val is not None:
+                            fx_rate = float(val)
                 except Exception as e:
                     print(f"⚠️ FX fetch fout voor {ticker} ({currency}): {e}")
             elif currency == "EUR":
                 fx_rate = 1.0
 
-            # Update positie met prijs en eventuele wisselkoers
+            # Update positie
             if current_price or fx_rate is not None:
                 row_id = pos.get('port_id') or pos.get('id')
                 if row_id:
@@ -476,24 +475,16 @@ def koersen_updater(group_id):
                         payload["wisselkoers"] = fx_rate
                     supabase.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
                     updated_count += 1
-                    msg_parts = []
-                    if current_price:
-                        msg_parts.append(f"prijs {current_price:.2f}")
-                    if fx_rate is not None:
-                        msg_parts.append(f"WK {fx_rate:.4f}")
-                    print(f"✅ {ticker} geupdate: {', '.join(msg_parts)}")
                 
         return True, f"{updated_count} koersen succesvol bijgewerkt."
         
     except Exception as e:
         return False, f"Fout bij updaten koersen: {str(e)}"
-    
-    # In auth.py
+
 
 def update_member_role(group_id, member_id, new_role):
-    """Update de rol van een groepslid (bijv. naar 'host' of 'member')."""
+    """Update de rol van een groepslid."""
     try:
-        # Check eerst of het lid bestaat in de groep
         response = supabase.table(GROUP_MEMBER_TABLE).update({
             GROUP_ROLE_COLUMN: new_role
         }).eq(GROUP_ID_COLUMN, group_id).eq("ledenid", member_id).execute()
@@ -501,32 +492,5 @@ def update_member_role(group_id, member_id, new_role):
         if response.data:
             return True, f"Rol succesvol gewijzigd naar {new_role}"
         return False, "Kon rol niet wijzigen (lid niet gevonden of error)."
-    except Exception as e:
-        return False, str(e)
-
-# Zorg er ook voor dat je in de bestaande functie 'get_membership_for_user_in_group' 
-# zeker weet dat de 'rol' wordt opgehaald (dat gebeurt al door select("*")).
-
-# --- IN auth.py ---
-
-# Voeg deze functie toe om aanvragen af te wijzen
-def reject_group_request(req_id, host_id):
-    try:
-        # We zetten de status op 'rejected' (of je kan .delete() gebruiken als je het weg wilt)
-        supabase.table("groepsaanvragen").update({
-            "status": "rejected",
-            "processed_by": host_id
-        }).eq("id", req_id).execute()
-        return True, "Aanvraag afgewezen."
-    except Exception as e:
-        return False, str(e)
-
-# Voeg deze functie toe om rollen aan te passen (Host maken)
-def update_member_role(group_id, member_id, new_role):
-    try:
-        response = supabase.table("groep_leden").update({
-            "rol": new_role
-        }).eq("groep_id", group_id).eq("ledenid", member_id).execute()
-        return True, f"Rol gewijzigd naar {new_role}."
     except Exception as e:
         return False, str(e)
