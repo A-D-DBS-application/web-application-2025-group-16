@@ -263,6 +263,14 @@
                     </div>
                 </div>
 
+                <div class="grid md:grid-cols-3 gap-4 mt-2">
+                    <div>
+                        <label class="form-label">Kosten in euro</label>
+                        <input id="fee-eur" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
+                        <div class="text-[11px] mt-1 text-slate-400">Afgeleid: kosten in eigen munt omgezet naar EUR via WK.</div>
+                    </div>
+                </div>
+
                 <div id="currency-extra" class="grid md:grid-cols-3 gap-4 mt-2 hidden">
                     <div>
                         <label class="form-label">Totaal in euro</label>
@@ -531,6 +539,7 @@
         const grossTotalInput = document.getElementById('gross-total');
         const finalTotalInput = document.getElementById('final-total');
         const derivedCostInput = document.getElementById('derived-cost');
+        const feeEurInput = document.getElementById('fee-eur');
         const cashAdjustInput = document.getElementById('cash-adjust-input');
         const cashAddBtn = document.getElementById('cash-add-btn');
         const cashRemoveBtn = document.getElementById('cash-remove-btn');
@@ -577,6 +586,42 @@
             fxRefreshBtn.addEventListener('click', async () => {
                 try {
                     setFormStatus('Wisselkoersen verversen...', 'info');
+                    // Roep backend aan om Wisselkoersen te verversen
+                    // Verzamel munten vanuit Supabase of val terug op huidige portfolio
+                    let currencies = [];
+                    try {
+                        const { data: currenciesRows, error: curErr2 } = await supabase
+                            .from('Wisselkoersen')
+                            .select('munt');
+                        if (!curErr2 && currenciesRows) {
+                            currencies = currenciesRows
+                                .map(r => String(r.munt||'').toUpperCase())
+                                .filter(c => c && c !== 'EUR');
+                        }
+                    } catch {}
+                    if (!currencies.length && Array.isArray(currentPortfolio)) {
+                        const set = new Set();
+                        for (const row of currentPortfolio) {
+                            const c = String(row.munt || row.currency || 'EUR').toUpperCase();
+                            if (c && c !== 'EUR') set.add(c);
+                        }
+                        currencies = Array.from(set);
+                    }
+
+                    const resp = await fetch('/api/refresh-wk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currencies })
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        setFormStatus(data.error || 'Backend verversen fout', 'error');
+                        throw new Error(data.error || 'Backend verversen fout');
+                    }
+                    const count = Number(data.updated || 0);
+                    setFormStatus(`Wisselkoersen geüpdatet (${count})`, 'success');
+                    console.log('Backend WK update:', data);
+                    // Update vervolgens de UI waarden
                     await refreshAllFxRates();
                 } catch (e) {
                     console.error('Ververs WK klik fout:', e);
@@ -585,12 +630,18 @@
             });
         }
         
-        function updateTotals() {
+        async function updateTotals() {
             const qty = parseFloat(quantityInput?.value || '0') || 0;
             const price = parseFloat(quotePriceInput?.value || '0') || 0;
             const gross = qty * price;
             if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
-            const final = parseFloat(finalTotalInput?.value || '0') || 0;
+            let final = parseFloat(finalTotalInput?.value || '0') || 0;
+            const feeLocal = parseFloat(derivedCostInput?.value || '0') || 0; // Kosten in eigen munt
+            // Indien totaal niet ingevuld maar kosten wel, leid totaal af: bruto + kosten
+            if (feeLocal > 0 && (!final || final <= 0)) {
+                final = gross + feeLocal;
+                if (finalTotalInput) finalTotalInput.value = (isFinite(final) ? final.toFixed(2) : '0.00');
+            }
             // Toon kosten zoals ingegeven/afgeleid; validatie gebeurt bij opslaan
             let derived = final - gross;
             if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
@@ -603,27 +654,35 @@
             if (extra) extra.classList.toggle('hidden', !showExtra);
             if (showExtra && eurInput && wkOutput) {
                 const totalEur = parseFloat(eurInput.value || '0') || 0;
+                // Als gebruiker beide totalen invult, leid WK af uit invoer
                 if (totalEur > 0 && final > 0) {
-                    const wk = final / totalEur;
+                    const wk = final / totalEur; // eigen munt / euro
                     wkOutput.value = isFinite(wk) ? wk.toFixed(4) : '';
                 } else {
-                    // Probeer FX op te halen wanneer geen directe WK afleiding
+                    // Anders: haal WK uit Wisselkoersen tabel
                     try {
-                        fetchFxRate(cur).then(rate => {
-                            if (rate && isFinite(rate)) {
-                                wkOutput.value = Number(rate).toFixed(4);
-                            } else {
-                                wkOutput.value = '';
-                            }
-                        });
+                        const rate = await fetchFxRate(cur);
+                        if (rate && isFinite(rate)) {
+                            wkOutput.value = Number(rate).toFixed(4);
+                        } else {
+                            wkOutput.value = '';
+                        }
                     } catch { wkOutput.value = ''; }
                 }
+                // Afleid kosten in euro: Kosten (TOTAAL − Bruto) / WK
+                const wkVal = parseFloat(wkOutput.value || '0') || 0;
+                const kostenEigen = parseFloat(derivedCostInput?.value || '0') || 0;
+                const feeEur = (wkVal > 0 ? (kostenEigen / wkVal) : 0);
+                if (feeEurInput) feeEurInput.value = (isFinite(feeEur) ? feeEur.toFixed(2) : '0.00');
             } else if (wkOutput) {
                 wkOutput.value = '';
+                // Wanneer munt EUR is, kosten in euro = kosten (eigen munt)
+                const feeEur = parseFloat(derivedCostInput?.value || '0') || 0;
+                if (feeEurInput) feeEurInput.value = (isFinite(feeEur) ? feeEur.toFixed(2) : '0.00');
             }
         }
         // Recompute on changes
-        [quantityInput, quotePriceInput, finalTotalInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
+        [quantityInput, quotePriceInput, finalTotalInput, derivedCostInput, currencyInput, document.getElementById('final-total-eur')].forEach(el => {
             if (el) el.addEventListener('input', updateTotals);
         });
         if (quantityInput) updateTotals(); // initial
@@ -631,11 +690,14 @@
         async function fetchFxRate(cur) {
             const code = String(cur||'').toUpperCase();
             if (!code || code === 'EUR') return 1;
+            // Lees uitsluitend uit eigen Wisselkoersen tabel (geen Yahoo fallback)
             try {
-                const resp = await fetch(`/api/fx/${encodeURIComponent(code)}`);
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'FX fout');
-                return Number(data.rate) || null;
+                const r1 = await fetch(`/api/wk/${encodeURIComponent(code)}`);
+                const d1 = await r1.json();
+                if (r1.ok && d1 && typeof d1.rate !== 'undefined') {
+                    return Number(d1.rate) || null;
+                }
+                return null;
             } catch {
                 return null;
             }
@@ -657,7 +719,7 @@
                     // Ga verder met alleen UI update op basis van huidige portfolio
                 }
                 const cache = new Map();
-                // 2) Voor elke munt: haal FX rate en update tabel
+                // 2) Voor elke munt: haal FX rate en update tabel (eerst tabel, anders backend)
                 if (currencies && currencies.length > 0) {
                     for (const row of currencies) {
                         const c = String(row.munt || '').toUpperCase();
@@ -699,6 +761,38 @@
                 setFormStatus('Verversen mislukt', 'error');
             }
         }
+
+        // Snelle initial load: haal alles in één snapshot en render één keer
+        async function loadDashboardSnapshot() {
+            try {
+                const resp = await fetch('/api/dashboard-snapshot');
+                const data = await resp.json();
+                if (!resp.ok) {
+                    console.warn('Snapshot error', data);
+                    return;
+                }
+                // WK cache
+                const wkMap = data.wk || {};
+                // Update huidige portfolio in-memory en bereken wisselkoersen
+                if (Array.isArray(data.positions)) {
+                    currentPortfolio = data.positions.map(p => {
+                        const cur = String(p.munt || p.currency || 'EUR').toUpperCase();
+                        const rate = typeof wkMap[cur] !== 'undefined' ? Number(wkMap[cur]) : (cur === 'EUR' ? 1 : undefined);
+                        if (rate && isFinite(rate)) p.wisselkoers = rate;
+                        return p;
+                    });
+                }
+                // Render één keer
+                if (typeof renderDashboard === 'function') {
+                    renderDashboard(currentPortfolio || []);
+                }
+            } catch (e) {
+                console.warn('Snapshot fetch fout', e);
+            }
+        }
+
+        // Start: laad snapshot eerst zodat de UI snel verschijnt
+        loadDashboardSnapshot();
         // Voorzie standaard huidige datum/tijd
         if (transactionDateInput) {
             const now = new Date();
@@ -719,6 +813,51 @@
             }
             return null;
         }
+
+        async function ensureRowCurrency(row) {
+            try {
+                const current = String(row.munt || row.currency || '').trim();
+                if (current && current !== '-') return current.toUpperCase();
+                const sym = String(row.ticker || '').toUpperCase();
+                if (!sym) return current || '';
+                const resp = await fetch(`/api/currency/${encodeURIComponent(sym)}`);
+                const data = await resp.json();
+                if (resp.ok && data.currency) {
+                    row.munt = String(data.currency).toUpperCase();
+                    return row.munt;
+                }
+                return current || '';
+            } catch {
+                return String(row.munt || row.currency || '').toUpperCase();
+            }
+        }
+
+        async function resolveCurrenciesForPortfolio(rows) {
+            if (!Array.isArray(rows)) return rows;
+            const updated = [];
+            for (const r of rows) {
+                const cur = await ensureRowCurrency(r);
+                if (cur) {
+                    const rate = await fetchFxRate(cur);
+                    if (rate && isFinite(rate)) r.wisselkoers = Number(rate);
+                }
+                updated.push(r);
+            }
+            return updated;
+        }
+
+        // After initial portfolio load, resolve currencies per ticker and re-render once
+        (async () => {
+            try {
+                if (Array.isArray(currentPortfolio) && currentPortfolio.length) {
+                    const resolved = await resolveCurrenciesForPortfolio(currentPortfolio);
+                    currentPortfolio = resolved;
+                    if (typeof renderDashboard === 'function') renderDashboard(currentPortfolio);
+                }
+            } catch (e) {
+                console.warn('Currency resolve error:', e);
+            }
+        })();
 
         // --- AI LOGICA START ---
         function openAiModal(title) {
@@ -867,9 +1006,11 @@
                         .limit(1);
                     if (!error && txs && txs.length > 0) {
                         const tx = txs[0];
-                        const cur = String(row.munt || tx.munt || '');
-                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (String(cur).toUpperCase()==='EUR' ? 1 : undefined);
-                        // Gebruik altijd de munt uit Portefeuille; niet overschrijven met quote/tx
+                        const existingCur = String(row.munt || '').toUpperCase();
+                        const txCur = String(tx.munt || '').toUpperCase();
+                        const cur = existingCur || txCur;
+                        const wk = (typeof tx.wisselkoers !== 'undefined' && tx.wisselkoers !== null) ? Number(tx.wisselkoers) : (cur==='EUR' ? 1 : undefined);
+                        if (!existingCur && txCur) row.munt = txCur;
                         if (!isNaN(wk)) row.wisselkoers = wk;
                     }
                 } catch (e) {
@@ -1245,7 +1386,8 @@
             // Gebruik manueel ingegeven koers indien beschikbaar, anders laatst opgehaalde.
             let overridePrice = parseFloat(quotePriceInput?.value || '0');
             let avgPrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
-            let transactionCost = parseFloat(derivedCostInput?.value || '0');
+            // Neem kosten in eigen munt indien ingevuld, anders afgeleide kosten
+            let transactionCost = parseFloat((document.getElementById('fee-local')?.value) || derivedCostInput?.value || '0');
             // If final total provided, derive cost from final - gross
             const grossFromInputs = (qty * avgPrice);
             const finalProvided = parseFloat(finalTotalInput?.value || '0');
@@ -1289,10 +1431,19 @@
             }
 
             // Fees: kosten zijn positief; geen negatieve kosten toegestaan
-            const feeAmount = transactionCost;
-            const totalCost = qty * avgPrice + feeAmount;
-            const cashAvailable = Number(lastCashRow.current_price) || 0;
-            if (totalCost > cashAvailable + 1e-8) {
+            const feeAmount = transactionCost; // in eigen munt
+            const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
+            const isEur = (selectedCurrency === 'EUR');
+            const grossLocal = qty * avgPrice; // eigen munt
+            const totalCostLocal = grossLocal + feeAmount; // eigen munt
+            // WK definitie: eigen munt / euro => euro = eigen / WK
+            const totalCostEur = isEur ? totalCostLocal : (wkVal > 0 ? (totalCostLocal / wkVal) : NaN);
+            const cashAvailable = Number(lastCashRow.current_price) || 0; // EUR
+            if (!isFinite(totalCostEur) || totalCostEur <= 0) {
+                setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
+                return;
+            }
+            if (totalCostEur > cashAvailable + 1e-8) {
                 setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
                 return;
             }
@@ -1304,9 +1455,10 @@
                 `Ticker: ${symbol}`,
                 `Aantal: ${qty}`,
                 `Koers: ${avgPrice.toFixed(2)} ${selectedCurrency}`,
-                `Bruto: ${(qty * avgPrice).toFixed(2)} ${selectedCurrency}`,
-                `Kosten (afgeleid): ${feeAmount.toFixed(2)} ${selectedCurrency}`,
-                `Totaal: ${(qty * avgPrice + feeAmount).toFixed(2)} ${selectedCurrency}`,
+                `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
+                `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`,
+                `Totaal (eigen munt): ${totalCostLocal.toFixed(2)} ${selectedCurrency}`,
+                `Totaal (EUR): ${totalCostEur.toFixed(2)} EUR`,
                 `Transactiedatum: ${dateStr}`
             ].join('\n');
             const confirmMsg = `${summary}\n\nBen je zeker dat je deze transactie wil opslaan?`;
@@ -1385,7 +1537,7 @@
                 insertedPortId = insertData?.[0]?.port_id || insertData?.[0]?.id || null;
             }
 
-            const nextCash = cashAvailable - totalCost;
+            const nextCash = cashAvailable - totalCostEur;
             const cashUpdateOk = await updateCashBalance(nextCash);
             if (!cashUpdateOk) {
                 // Rollback bij nieuwe positie (verwijderen) of bestaande positie (waarden terugzetten)

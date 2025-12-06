@@ -70,6 +70,7 @@ from auth import (
     approve_group_request,
     update_member_role # <--- ZORG DAT DEZE TOEGEVOEGD IS AAN AUTH.PY
 )
+from supabase import create_client as create_supabase_client  # admin client for server-side writes
 import re
 
 app = Flask(__name__)
@@ -110,6 +111,13 @@ except Exception as _e:
 SUPABASE_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M" 
 
+
+# Server-side Supabase admin client (optional; works even if RLS is off)
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+try:
+    supabase_admin = create_supabase_client(SUPABASE_URL, SUPABASE_SERVICE_KEY) if SUPABASE_SERVICE_KEY else None
+except Exception:
+    supabase_admin = None
 
 # --- AI CONFIGURATIE (GEMINI) ---
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -189,6 +197,187 @@ def get_fx_rate(cur: str):
     except Exception as e:
         print(f"Fout bij FX: {e}")
         return jsonify({'error': 'FX fout'}), 500
+
+@app.route('/api/wk/<cur>')
+def get_wk_from_table(cur: str):
+    """Haal wisselkoers uit Supabase 'Wisselkoersen' voor opgegeven munt."""
+    try:
+        code = (cur or '').strip().upper()
+        if not code or len(code) < 3:
+            return jsonify({'error': 'Ongeldige munt'}), 400
+        if code == 'EUR':
+            return jsonify({'currency': 'EUR', 'rate': 1.0, 'source': 'table'})
+        res = (supabase_admin or supabase).table('Wisselkoersen').select('wk,munt').eq('munt', code).limit(1).execute()
+        rows = res.data or []
+        if rows:
+            wk = rows[0].get('wk')
+            if wk is not None:
+                return jsonify({'currency': code, 'rate': float(wk), 'source': 'table'})
+        return jsonify({'error': 'Niet gevonden'}), 404
+    except Exception as e:
+        return jsonify({'error': f'WK tabel fout: {e}'}), 500
+
+@app.route('/api/wk-all')
+def get_all_wk_from_table():
+    """Haal alle wisselkoersen uit Supabase 'Wisselkoersen'."""
+    try:
+        res = (supabase_admin or supabase).table('Wisselkoersen').select('wk,munt').execute()
+        rows = res.data or []
+        data = [{'currency': str(r.get('munt') or '').upper(), 'rate': r.get('wk')} for r in rows if r]
+        return jsonify({'rates': data})
+    except Exception as e:
+        return jsonify({'error': f'WK tabel fout: {e}'}), 500
+
+@app.route('/api/currency/<ticker>')
+def get_currency_for_ticker(ticker: str):
+    """Geef de laatst bekende 'munt' voor een ticker uit de Transacties tabel."""
+    try:
+        sym = (ticker or '').strip().upper()
+        if not sym:
+            return jsonify({'error': 'Ongeldige ticker'}), 400
+        res = supabase.table('Transacties').select('munt,ticker,datum_tr')\
+            .eq('ticker', sym).order('datum_tr', desc=True).limit(1).execute()
+        rows = res.data or []
+        if rows:
+            cur = (rows[0].get('munt') or '').upper() or None
+            if cur:
+                return jsonify({'ticker': sym, 'currency': cur})
+        return jsonify({'error': 'Geen munt gevonden'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Currency fetch fout: {e}'}), 500
+
+@app.route('/api/dashboard-snapshot')
+def dashboard_snapshot():
+    """Return consolidated dashboard data in one call: portfolio rows, WK map, and cash balance."""
+    try:
+        gid = session.get("group_id")
+        if not gid:
+            return jsonify({"error": "Geen actieve groep"}), 400
+
+        # Portfolio positions for the group
+        positions = []
+        try:
+            res_pos = supabase.table("Portefeuille").select("*").eq("groep_id", gid).execute()
+            positions = res_pos.data or []
+        except Exception as e:
+            positions = []
+
+        # WK map
+        wk_map = {}
+        try:
+            res_wk = (supabase_admin or supabase).table("Wisselkoersen").select("wk,munt").execute()
+            for r in res_wk.data or []:
+                c = str(r.get("munt") or "").upper()
+                v = r.get("wk")
+                if c:
+                    wk_map[c] = v
+            wk_map.setdefault("EUR", 1.0)
+        except Exception:
+            wk_map = {"EUR": 1.0}
+
+        # Cash balance
+        cash_balance = 0.0
+        try:
+            ok_cash, cash_val = get_cash_balance_for_group(gid)
+            if ok_cash:
+                cash_balance = float(cash_val or 0)
+        except Exception:
+            cash_balance = 0.0
+
+        return jsonify({
+            "group_id": gid,
+            "positions": positions,
+            "wk": wk_map,
+            "cash": cash_balance
+        })
+    except Exception as e:
+        return jsonify({"error": f"Snapshot fout: {e}"}), 500
+
+@app.route('/api/refresh-wk', methods=['POST'])
+def refresh_wisselkoersen():
+    """Ververs wisselkoersen in Supabase tabel 'Wisselkoersen' op basis van Yahoo Finance.
+    Updates kolom 'wk' voor elke rij met een geldige 'munt'. EUR = 1.0.
+    """
+    # Alleen hosts mogen verversen
+    try:
+        if not is_current_user_host():
+            return jsonify({'error': 'Alleen host mag wisselkoersen verversen'}), 403
+    except Exception:
+        return jsonify({'error': 'Geen groepscontext of sessie'}), 403
+    try:
+        # Optioneel: lijst munten via payload
+        payload = None
+        try:
+            payload = request.get_json(silent=True) or {}
+        except Exception:
+            payload = {}
+        requested_currencies = payload.get('currencies') if isinstance(payload, dict) else None
+
+        # Gebruik uitsluitend aangeleverde currencies om select-fouten te vermijden
+        if requested_currencies and isinstance(requested_currencies, list) and requested_currencies:
+            rows = [{'munt': str(c).upper()} for c in requested_currencies]
+        else:
+            return jsonify({'updated': 0, 'message': 'Geen munten aangeleverd'}), 400
+        if not rows:
+            return jsonify({'updated': 0, 'message': 'Geen munten gevonden'}), 200
+
+        cache: dict[str, float] = {}
+        updated = 0
+        for row in rows:
+            code = str((row or {}).get('munt') or '').strip().upper()
+            if not code:
+                continue
+            if code == 'EUR':
+                rate = 1.0
+            else:
+                # Cache om dubbele requests te vermijden
+                if code in cache:
+                    rate = cache[code]
+                else:
+                    # Gebruik bestaande FX route logica inline
+                    symbol = f"EUR{code}=X"
+                    rate = None
+                    try:
+                        if YFINANCE_AVAILABLE and yf is not None:
+                            stock = yf.Ticker(symbol)
+                            try:
+                                rate = getattr(stock.fast_info, 'last_price', None)
+                            except Exception:
+                                rate = None
+                            if rate is None:
+                                info = getattr(stock, 'info', {})
+                                rate = info.get('regularMarketPrice') or info.get('bid') or info.get('ask')
+                        if rate is None:
+                            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+                            r = requests.get(url, timeout=6)
+                            jd = r.json()
+                            results = jd.get('quoteResponse', {}).get('result', [])
+                            if results:
+                                item = results[0]
+                                rate = item.get('regularMarketPrice') or item.get('postMarketPrice') or item.get('bid') or item.get('ask')
+                    except Exception:
+                        rate = None
+                    if rate is None:
+                        # Sla over als geen koers beschikbaar
+                        continue
+                    try:
+                        rate = float(rate)
+                    except Exception:
+                        continue
+                    cache[code] = rate
+
+            # 2) Update tabel voor deze munt
+            try:
+                client = supabase_admin or supabase
+                client.table('Wisselkoersen').update({'wk': rate}).eq('munt', code).execute()
+                updated += 1
+            except Exception:
+                # Ga door met volgende
+                pass
+
+        return jsonify({'updated': updated, 'message': 'Wisselkoersen bijgewerkt'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Fout bij verversen: {e}'}), 500
 
 # --- HULPFUNCTIE: Slimme AI aanroep (VERBETERDE VERSIE) ---
 def generate_ai_content_safe(prompt, retries=1):
@@ -669,6 +858,65 @@ def api_log_transaction():
     # Datum vanuit UI doorgeven aan backend payload
     raw_date = (data.get("datum_tr") or "").strip()
     datum_payload = raw_date if raw_date else None
+    # Zorg dat de munt in Wisselkoersen staat; voeg toe indien ontbreekt
+    try:
+        code = currency.upper()
+        client = supabase_admin or supabase
+        existing = client.table("Wisselkoersen").select("munt").eq("munt", code).limit(1).execute()
+        if not (existing.data or []):
+            # Haal WK via Yahoo: EURcode=X (eigen/euro). EUR is 1.0
+            if code == "EUR":
+                wk_rate = 1.0
+            else:
+                wk_rate = None
+                symbol = f"EUR{code}=X"
+                try:
+                    if YFINANCE_AVAILABLE and yf is not None:
+                        stock = yf.Ticker(symbol)
+                        try:
+                            wk_rate = getattr(stock.fast_info, 'last_price', None)
+                        except Exception:
+                            wk_rate = None
+                        if wk_rate is None:
+                            info = getattr(stock, 'info', {})
+                            wk_rate = info.get('regularMarketPrice') or info.get('bid') or info.get('ask')
+                    if wk_rate is None:
+                        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+                        r = requests.get(url, timeout=6)
+                        jd = r.json()
+                        results = jd.get('quoteResponse', {}).get('result', [])
+                        if results:
+                            item = results[0]
+                            wk_rate = item.get('regularMarketPrice') or item.get('postMarketPrice') or item.get('bid') or item.get('ask')
+                except Exception:
+                    wk_rate = None
+                try:
+                    wk_rate = float(wk_rate) if wk_rate is not None else None
+                except Exception:
+                    wk_rate = None
+                # Als niet gevonden, gebruik exchange_rate uit de transactie indien zinvol (>0)
+                if wk_rate is None:
+                    wk_rate = exchange_rate if exchange_rate and exchange_rate > 0 else None
+                if wk_rate is None:
+                    wk_rate = 1.0 if code == "EUR" else None
+            # Insert of upsert
+            try:
+                if wk_rate is not None:
+                    client.table("Wisselkoersen").insert({"munt": code, "wk": wk_rate}).execute()
+                else:
+                    client.table("Wisselkoersen").insert({"munt": code, "wk": None}).execute()
+            except Exception:
+                # Probeer update als insert faalt door RLS of conflict
+                try:
+                    if wk_rate is not None:
+                        client.table("Wisselkoersen").update({"wk": wk_rate}).eq("munt", code).execute()
+                    else:
+                        client.table("Wisselkoersen").update({"wk": None}).eq("munt", code).execute()
+                except Exception:
+                    pass
+    except Exception as e:
+        app.logger.warning(f"Kon munteenheid niet upserten in Wisselkoersen: {e}")
+
     ok, res = log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate, currency, datum_payload)
     if not ok:
         return jsonify({"error": res}), 400
