@@ -998,7 +998,7 @@
                 const resp = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/realized_profit`);
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || 'Kon gerealiseerde winst niet ophalen');
-                const total = Number(data.total_profit || 0);
+                const total = Number(data.total || 0);
                 realizedProfitEl.textContent = eur.format(total);
                 realizedProfitEl.className = 'text-3xl font-bold ' + (total >= 0 ? 'text-emerald-600' : 'text-rose-600');
                 if (realizedCountEl) realizedCountEl.textContent = `${data.sell_count || 0} verkopen`;

@@ -21,8 +21,7 @@ DEV_FALLBACK_URL = "https://bpbvlfptoacijyqyugew.supabase.co"
 DEV_FALLBACK_ANON = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
     "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0."
-    "6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M"
-)
+    "6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M")
 
 # Forceer hardcoded defaults als env ontbreekt (voor eenvoudige opstart op elk toestel)
 if not SUPABASE_URL:
@@ -37,10 +36,7 @@ def _missing_env(var_name: str) -> str:
 supabase = None
 supabase_admin = None
 
-if not os.environ.get("SUPABASE_URL"):
-    print("ℹ️ Gebruikt hardcoded dev Supabase URL (zet 'SUPABASE_URL' om te overschrijven).")
-if not os.environ.get("SUPABASE_ANON_KEY"):
-    print("ℹ️ Gebruikt hardcoded dev Supabase ANON key (zet 'SUPABASE_ANON_KEY' om te overschrijven).")
+
 
 # 1. Standaard client (voor app-gebruikers)
 if SUPABASE_URL and SUPABASE_ANON_KEY:

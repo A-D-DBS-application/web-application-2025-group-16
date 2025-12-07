@@ -128,6 +128,159 @@ def transactions_page():
         
     return render_template("transactions.html", transactions=txs)
 
+@main_bp.route("/api/groups/<int:group_id>/realized_profit")
+def api_realized_profit(group_id: int):
+    """Geeft 'gerealiseerde winst' terug op basis van gemiddelde aankoopprijs per ticker.
+    Berekening:
+      - Voor elke SELL-transactie: realized += aantal × (verkoopkoers − gemiddelde aankoopkoers van die ticker)
+      - Transactiekosten (op portefeuilleniveau) worden altijd als negatieve post afgetrokken.
+    Opmerking:
+      - Deze benadering gebruikt gemiddelde aankoopkoers (AVG) per ticker over alle BUY-transacties in de groep.
+      - Er wordt geen FIFO/lot-tracking toegepast omdat die data niet beschikbaar is.
+    """
+
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+
+    uid = session.get("user_id")
+    ok, mem = get_membership_for_user_in_group(uid, group_id)
+    if not (ok and mem):
+        return jsonify({"error": "Geen toegang tot deze groep"}), 403
+
+    try:
+        ports = supabase.table("Portefeuille").select("port_id").eq("groep_id", group_id).execute()
+        p_ids = [r.get("port_id") for r in (ports.data or []) if r.get("port_id") is not None]
+
+        sell_count = 0
+
+        # Verzamel alle transacties (BUY/SELL) voor de betreffende portfolio's, incl. ticker.
+        # Hiermee kunnen we per ticker een gemiddelde aankoopprijs bepalen.
+        avg_buy_price_per_ticker = {}
+        total_buy_qty_per_ticker = {}
+        sell_rows = []
+
+        if p_ids:
+            # Haal BUY/SELL met ticker op
+            res_all = (
+                supabase
+                .table("Transacties")
+                .select("aantal, koers, type, ticker")
+                .in_("portefeuille_id", p_ids)
+                .in_("type", ["BUY", "SELL"])  # filter beide
+                .execute()
+            )
+            for row in (res_all.data or []):
+                try:
+                    ttype = (row.get("type") or "").upper()
+                    ticker = (row.get("ticker") or "").upper()
+                    qty = float(row.get("aantal") or 0)
+                    price = float(row.get("koers") or 0)
+                    if not ticker:
+                        # Zonder ticker kunnen we geen gemiddelde berekenen; sla over
+                        continue
+                    if ttype == "BUY" and qty > 0:
+                        total_buy_qty_per_ticker[ticker] = total_buy_qty_per_ticker.get(ticker, 0.0) + qty
+                        # Geweegde som voor gemiddelde
+                        prev_qty = total_buy_qty_per_ticker[ticker] - qty
+                        prev_avg = avg_buy_price_per_ticker.get(ticker, 0.0)
+                        prev_weighted = prev_avg * prev_qty
+                        new_weighted = prev_weighted + (qty * price)
+                        avg_buy_price_per_ticker[ticker] = (new_weighted / total_buy_qty_per_ticker[ticker]) if total_buy_qty_per_ticker[ticker] > 0 else 0.0
+                    elif ttype == "SELL" and qty > 0:
+                        sell_rows.append({"ticker": ticker, "qty": qty, "price": price})
+                        sell_count += 1
+                except Exception:
+                    # Als een rij niet te parsen is, negeren we die
+                    pass
+
+        # Trek cumulatieve transactiekost van alle portfolio's in deze groep af
+        # Kosten optellen voor ALLE portfolio's van de groep, ook zonder transacties
+        cost_total = 0.0
+        res_cost = (
+            supabase
+            .table("Portefeuille")
+            .select("transactiekost")
+            .eq("groep_id", group_id)
+            .execute()
+        )
+        for row in (res_cost.data or []):
+            try:
+                cost_total += float(row.get("transactiekost") or 0)
+            except Exception:
+                pass
+
+        # Bereken gerealiseerde winst op basis van gemiddelde aankoopprijs per ticker voor alle SELLs
+        realized_core = 0.0
+        for s in sell_rows:
+            ticker = s.get("ticker")
+            qty = float(s.get("qty") or 0)
+            sell_price = float(s.get("price") or 0)
+            avg_buy = float(avg_buy_price_per_ticker.get(ticker, 0.0))
+            realized_core += qty * (sell_price - avg_buy)
+
+        realized = realized_core - cost_total
+        return jsonify({
+            "total": realized,
+            "sell_count": sell_count,
+            "avg_buy_prices": avg_buy_price_per_ticker,
+            "cost_sum": cost_total
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@main_bp.route("/api/dashboard-snapshot")
+def api_dashboard_snapshot():
+    """Eenvoudige snapshot endpoint zodat dashboard geen 404 geeft.
+    Geeft basisinformatie terug voor de actieve groep uit de sessie.
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+
+    snap = _current_group_snapshot()
+    if not snap:
+        return jsonify({"error": "Geen actieve groep"}), 404
+    try:
+        ok, bal = get_cash_balance_for_group(snap["id"])
+        return jsonify({
+            "group": snap,
+            "cash_balance": bal or 0.0,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@main_bp.route("/api/portfolio/<int:port_id>/add_cost", methods=["POST"])
+def api_add_portfolio_cost(port_id: int):
+    """Verhoog cumulatieve transactiekost voor een portfolio.
+    Body: { amount: number }
+    """
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+
+    # Controle: gebruiker moet lid zijn van de groep van deze portfolio
+    try:
+        port = supabase.table("Portefeuille").select("port_id, groep_id, transactiekost").eq("port_id", port_id).limit(1).execute()
+        rows = port.data or []
+        if not rows:
+            return jsonify({"error": "Portfolio niet gevonden"}), 404
+        row = rows[0]
+        gid = row.get("groep_id")
+        ok, mem = get_membership_for_user_in_group(session.get("user_id"), gid)
+        if not (ok and mem):
+            return jsonify({"error": "Geen toegang"}), 403
+
+        data = request.get_json() or {}
+        amt = float(data.get("amount") or 0)
+        if amt <= 0:
+            return jsonify({"error": "Amount moet > 0"}), 400
+
+        current = float(row.get("transactiekost") or 0)
+        new_val = current + amt
+        supabase.table("Portefeuille").update({"transactiekost": new_val}).eq("port_id", port_id).execute()
+        return jsonify({"port_id": port_id, "transactiekost": new_val})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    
 @main_bp.route("/leden")
 def leden():
     if "user_id" not in session: return redirect(url_for("auth.login"))
