@@ -1,6 +1,8 @@
 # Alles wat met groepen te maken heeft.
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 import secrets
+from instap_uitstapkost import calculate_entry_cost, calculate_exit_cost
+
 # Importeer functies uit jouw auth.py en config
 from auth import (
     create_group_record, get_group_by_code, get_group_by_id, group_code_exists,
@@ -131,8 +133,29 @@ def group_dashboard():
         "id": group["id"], "name": group["name"], "code": group.get("invite_code"),
         "description": group.get("description"), "member_total": len(members), "owner_id": group.get("owner_id")
     }
-    
-    return render_template("group.html", group=group_ctx, members=profiles, is_owner=is_host, requests=requests_list, is_host=is_host, current_user_id=session["user_id"])
+        # --- Instapkosten ---
+    entry_data = None
+    ok_in, res_in = calculate_entry_cost(group["id"])
+    if ok_in:
+        entry_data = res_in
+
+    # --- Uitstapkosten ---
+    exit_data = None
+    ok_out, res_out = calculate_exit_cost(group["id"])
+    if ok_out:
+        exit_data = res_out
+
+    return render_template(
+    "group.html",
+    group=group_ctx,
+    members=profiles,
+    is_owner=is_host,
+    requests=requests_list,
+    current_user_id=session["user_id"],
+    entry_cost=entry_data,
+    exit_cost=exit_data
+)
+
 
 @groups_bp.route("/groups/select/<int:group_id>", methods=["POST"])
 def select_group(group_id):
