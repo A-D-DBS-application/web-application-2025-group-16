@@ -32,6 +32,21 @@ def _fetch_yahoo_http(symbol: str):
         logger.error(f"HTTP fallback error voor {symbol}: {e}")
     return None
 
+def get_latest_price(ticker: str):
+    """Geef enkel de laatste koers voor een ticker terug (float of None).
+
+    Dit gebruikt dezelfde bronnen als get_ticker_data: eerst yfinance (indien
+    beschikbaar), daarna een directe HTTP-call naar Yahoo's public JSON API.
+    """
+    info = get_ticker_data(ticker)
+    if not info:
+        return None
+    try:
+        price = info.get('regularMarketPrice')
+        return float(price) if price is not None else None
+    except Exception:
+        return None
+
 def get_ticker_data(ticker: str):
     """
     Haalt uitgebreide info op voor een aandeel (Prijs, Naam, Sector, Valuta).

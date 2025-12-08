@@ -1,7 +1,6 @@
 import logging
-import requests
-from config import supabase # <--- Haalt de verbinding nu uit je centrale config
-import yfinance as yf
+from config import supabase, supabase_admin  # gebruik admin client als beschikbaar
+from market_data import get_latest_price, get_currency_rate
 
 # --- CONFIGURATIE ---
 # (De keys en URL zijn hier weggehaald omdat ze nu uit config.py komen)
@@ -19,12 +18,7 @@ PORTFOLIO_TABLE = "Portefeuille"
 CASH_TX_TABLE = "Kas"
 TRANSACTION_TABLE = "Transacties"
 
-# Check of yfinance werkt
-YFINANCE_AVAILABLE = True
-try:
-    import yfinance as yf
-except ImportError:
-    YFINANCE_AVAILABLE = False
+# Alle externe Yahoo/prijslogica is verplaatst naar market_data.py
 
 
 def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR", datum_tr=None):
@@ -398,86 +392,72 @@ def add_portfolio_position(group_id, ticker, quantity, price, user_id):
         return False, str(e)
 
 def koersen_updater(group_id):
-    """Haalt live koersen op via Yahoo Finance en update de database."""
+    """Haalt live koersen op via Yahoo Finance en update de Portefeuille.
+
+    - Gebruikt de service client wanneer beschikbaar (om RLS-issues te vermijden).
+    - Haalt prijzen op via helpers in market_data.py (centrale plek).
+    - Past GEEN kolommen bij die niet bestaan; we updaten enkel `current_price`.
+    """
     try:
-        response = supabase.table(PORTFOLIO_TABLE).select("*").eq("groep_id", group_id).execute()
-        positions = response.data
-        
+        client = supabase_admin or supabase
+        if client is None:
+            return False, "Geen Supabase client geconfigureerd"
+
+        response = client.table(PORTFOLIO_TABLE).select("*").eq("groep_id", group_id).execute()
+        positions = response.data or []
+
         if not positions:
             return True, "Geen posities om te updaten."
-            
+
         updated_count = 0
         for pos in positions:
-            ticker = pos.get('ticker')
+            ticker = (pos.get('ticker') or '').upper()
             if not ticker or ticker == 'CASH':
                 continue
 
-            current_price = None
-            if YFINANCE_AVAILABLE and yf is not None:
-                try:
-                    stock = yf.Ticker(ticker)
-                    if hasattr(stock, 'fast_info'):
-                        current_price = getattr(stock.fast_info, 'last_price', None)
-                    if current_price is None:
-                        hist = stock.history(period="1d")
-                        if not hist.empty:
-                            current_price = float(hist['Close'].iloc[-1])
-                except Exception as e:
-                    print(f"⚠️ yfinance fout voor {ticker}: {e}; probeer HTTP.")
+            # Haal laatste koers via market_data
+            current_price = get_latest_price(ticker)
 
-            if current_price is None:
-                try:
-                    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
-                    r = requests.get(url, timeout=5)
-                    jd = r.json()
-                    results = jd.get("quoteResponse", {}).get("result", [])
-                    if results:
-                        item = results[0]
-                        current_price = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
-                except Exception as e:
-                    print(f"⚠️ HTTP fallback fout voor {ticker}: {e}")
-
-            # Bepaal munt
+            # Munt bepalen op basis van laatste transactie
             currency = None
             try:
-                tx = supabase.table(TRANSACTION_TABLE).select("munt,ticker").eq("ticker", ticker).order("datum_tr", desc=True).limit(1).execute()
+                tx = client.table(TRANSACTION_TABLE).select("munt,ticker").eq("ticker", ticker).order("datum_tr", desc=True).limit(1).execute()
                 if tx and tx.data:
                     currency = (tx.data[0].get("munt") or "").upper() or None
             except Exception:
                 currency = None
 
+            # Optioneel: wisselkoers bepalen (maar we schrijven die NIET weg,
+            # omdat sommige schema's geen 'wisselkoers' kolom bevatten).
+            # Wisselkoers (indien nuttig voor elders); we schrijven dit niet weg in Portefeuille
             fx_rate = None
             if currency and currency != "EUR":
                 try:
-                    pair = f"EUR{currency}=X"
-                    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={pair}"
-                    r = requests.get(url, timeout=5)
-                    jd = r.json()
-                    results = jd.get("quoteResponse", {}).get("result", [])
-                    if results:
-                        item = results[0]
-                        val = item.get("regularMarketPrice") or item.get("postMarketPrice") or item.get("bid") or item.get("ask")
-                        if val is not None:
-                            fx_rate = float(val)
+                    fx_rate = get_currency_rate(currency)
                 except Exception as e:
-                    print(f"⚠️ FX fetch fout voor {ticker} ({currency}): {e}")
+                    logging.warning(f"FX fetch fout voor {ticker} ({currency}): {e}")
             elif currency == "EUR":
                 fx_rate = 1.0
 
-            # Update positie
-            if current_price or fx_rate is not None:
-                row_id = pos.get('port_id') or pos.get('id')
-                if row_id:
-                    payload = {}
-                    if current_price:
-                        payload["current_price"] = current_price
-                    if fx_rate is not None:
-                        payload["wisselkoers"] = fx_rate
-                    supabase.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
+            # Update positie indien we iets hebben
+            row_id = pos.get('port_id') or pos.get('id')
+            payload = {}
+            if current_price is not None:
+                try:
+                    payload["current_price"] = float(current_price)
+                except Exception:
+                    pass
+            # NB: wisselkoers niet updaten in deze tabel (kolom bestaat niet in jouw schema)
+
+            if row_id and payload:
+                try:
+                    client.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
                     updated_count += 1
-                
+                except Exception as e:
+                    logging.error(f"DB update fout voor {ticker} (row {row_id}): {e}")
+
         return True, f"{updated_count} koersen succesvol bijgewerkt."
-        
+
     except Exception as e:
         return False, f"Fout bij updaten koersen: {str(e)}"
 

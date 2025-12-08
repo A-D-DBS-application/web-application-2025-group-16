@@ -35,6 +35,9 @@
 
     {% include '_nav.html' %}
 
+    <!-- Global Toast Container -->
+    <div id="toast-root" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
@@ -61,11 +64,6 @@
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
                     AI Portefeuille Scan
                 </button>
-                
-                <a href="{{ url_for('main.refresh_prices', group_id=active_group.id) }}" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
-                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                    Ververs Koersen
-                </a>
                 <a href="{{ url_for('main.transactions_page') }}" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="list" class="h-4 w-4"></i>
                     Transacties
@@ -251,11 +249,11 @@
                         <input id="gross-total" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                     <div>
-                        <label class="form-label">Totaal in eigen munt</label>
+                        <label id="total-label" class="form-label">Totaal in eigen munt</label>
                         <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
                     <div>
-                        <label class="form-label">Kosten (TOTAAL − Bruto)</label>
+                        <label id="cost-label" class="form-label">Kosten (TOTAAL − Bruto)</label>
                         <input id="derived-cost" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                 </div>
@@ -402,9 +400,9 @@
                         Huidige Posities
                     </h3>
                     <div class="flex items-center gap-2">
-                        <button id="fx-refresh-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+                        <button id="refresh-all-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
                             <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                            Ververs WK
+                            Ververs
                         </button>
                     </div>
                 </div>
@@ -555,7 +553,7 @@
         const aiContent = document.getElementById('ai-content');
         const realizedProfitEl = document.getElementById('realized-profit');
         const realizedCountEl = document.getElementById('realized-count');
-        const fxRefreshBtn = document.getElementById('fx-refresh-btn');
+        const refreshAllBtn = document.getElementById('refresh-all-btn');
 
         const QUOTE_ENDPOINT = '/api/quote/';
         let lastQuote = null;
@@ -577,10 +575,19 @@
         document.addEventListener('click', handleTableAction);
         
         if (aiScanBtn) aiScanBtn.addEventListener('click', runPortfolioAiScan);
-        if (fxRefreshBtn) {
-            fxRefreshBtn.addEventListener('click', async () => {
+        if (refreshAllBtn) {
+            refreshAllBtn.addEventListener('click', async () => {
+                if (!ACTIVE_GROUP_ID) return;
+                let loadingToast = null;
                 try {
-                    setFormStatus('Wisselkoersen verversen...', 'info');
+                    loadingToast = showToast('Verversen...', 'info', 0, true);
+
+                    // 1) Koersen via JSON endpoint
+                    const pricesResp = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/refresh_prices`, { method: 'POST' });
+                    const pricesJson = await pricesResp.json();
+                    if (!pricesResp.ok) throw new Error(pricesJson.error || 'Koersen verversen mislukt');
+
+                    // 2) Wisselkoersen: bepaal lijst munten
                     let currencies = [];
                     try {
                         const { data: currenciesRows, error: curErr2 } = await supabase
@@ -601,38 +608,39 @@
                         currencies = Array.from(set);
                     }
 
-                    const resp = await fetch('/api/refresh-wk', {
+                    const wkResp = await fetch('/api/refresh-wk', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ currencies })
                     });
-                    const data = await resp.json();
-                    if (!resp.ok) {
-                        setFormStatus(data.error || 'Backend verversen fout', 'error');
-                        throw new Error(data.error || 'Backend verversen fout');
-                    }
-                    const count = Number(data.updated || 0);
-                    setFormStatus(`Wisselkoersen geüpdatet (${count})`, 'success');
+                    const wkJson = await wkResp.json();
+                    if (!wkResp.ok) throw new Error(wkJson.error || 'WK verversen mislukt');
+
+                    // 3) UI updaten
                     await refreshAllFxRates();
+                    await fetchPortfolio();
+                    const msg = `${pricesJson.updated || pricesJson.message || 'koersen'} + ${wkJson.updated || 0} WK`;
+                    showToast(`Verversen voltooid (${msg})`, 'success');
                 } catch (e) {
-                    console.error('Ververs WK klik fout:', e);
-                    setFormStatus('Verversen mislukt', 'error');
+                    console.error('Ververs klik fout:', e);
+                    showToast(e.message || 'Verversen mislukt', 'error');
+                } finally {
+                    try { if (loadingToast && typeof loadingToast.close === 'function') loadingToast.close(); } catch {}
                 }
             });
         }
         
         async function updateTotals() {
+            const txnType = (txnTypeSelect?.value || 'BUY').toUpperCase();
             const qty = parseFloat(quantityInput?.value || '0') || 0;
             const price = parseFloat(quotePriceInput?.value || '0') || 0;
             const gross = qty * price;
             if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
-            let final = parseFloat(finalTotalInput?.value || '0') || 0;
-            const feeLocal = parseFloat(derivedCostInput?.value || '0') || 0; 
-            if (feeLocal > 0 && (!final || final <= 0)) {
-                final = gross + feeLocal;
-                if (finalTotalInput) finalTotalInput.value = (isFinite(final) ? final.toFixed(2) : '0.00');
+            const final = parseFloat(finalTotalInput?.value || '0') || 0;
+            let derived = 0;
+            if (final > 0) {
+                derived = Math.abs(gross - final);
             }
-            let derived = final - gross;
             if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
             const cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
             const extra = document.getElementById('currency-extra');
@@ -687,48 +695,39 @@
 
         async function refreshAllFxRates() {
             try {
-                if (!window.supabase) return;
-                const { data: currencies, error: curErr } = await supabase
-                    .from('Wisselkoersen')
-                    .select('wk_id, munt');
-                if (curErr) {
-                    setFormStatus('Kon munten niet ophalen (Wisselkoersen)', 'error');
-                }
                 const cache = new Map();
-                if (currencies && currencies.length > 0) {
-                    for (const row of currencies) {
-                        const c = String(row.munt || '').toUpperCase();
-                        if (!c || c === 'EUR') continue;
-                        let rate = cache.get(c);
-                        if (!rate) {
-                            rate = await fetchFxRate(c);
-                            if (rate) cache.set(c, rate);
-                        }
-                        if (rate && isFinite(rate)) {
-                            await supabase
-                                .from('Wisselkoersen')
-                                .update({ wk: Number(rate) })
-                                .eq('munt', c)
-                                .select();
-                        }
+                const needed = new Set();
+                if (Array.isArray(currentPortfolio)) {
+                    for (const row of currentPortfolio) {
+                        const c = String(row?.munt || row?.currency || 'EUR').toUpperCase();
+                        if (c && c !== 'EUR') needed.add(c);
                     }
-                } 
-                if (currentPortfolio && currentPortfolio.length > 0) {
+                }
+
+                for (const c of needed) {
+                    const rate = await fetchFxRate(c);
+                    if (rate && isFinite(rate)) cache.set(c, Number(rate));
+                }
+
+                if (Array.isArray(currentPortfolio) && currentPortfolio.length > 0) {
                     const updated = [];
                     for (const row of currentPortfolio) {
                         const cur = String(row.munt || row.currency || 'EUR').toUpperCase();
-                        if (!cur || cur === 'EUR') { row.wisselkoers = 1; updated.push(row); continue; }
+                        if (!cur || cur === 'EUR') {
+                            row.wisselkoers = 1;
+                            updated.push(row);
+                            continue;
+                        }
                         const r = cache.get(cur);
-                        if (r && isFinite(r)) row.wisselkoers = Number(r);
+                        if (r && isFinite(r)) row.wisselkoers = r;
                         updated.push(row);
                     }
                     currentPortfolio = updated;
                     renderDashboard(currentPortfolio);
-                    setFormStatus('Wisselkoersen verversen voltooid', 'success');
                 }
             } catch (e) {
                 console.error('FX refresh error:', e);
-                setFormStatus('Verversen mislukt', 'error');
+                // Keep silent here; top-level toast already reports overall status
             }
         }
 
@@ -881,11 +880,16 @@
         function updateTransactionUI() {
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
             const labelMap = { 'BUY': 'Aankoop', 'SELL': 'Verkoop', 'DIVIDEND': 'Dividend', 'TRANSFER': 'Overschrijving', 'PAYOUT': 'Uitbetaling effecten' };
-            if (t === 'BUY') {
+            if (t === 'BUY' || t === 'SELL') {
                 buySection?.classList.remove('hidden');
                 txnPlaceholder?.classList.add('hidden');
                 if (positionSubmitBtn) positionSubmitBtn.disabled = false;
-                setFormStatus('Zoek een ticker om details te laden', 'info');
+                setFormStatus(t === 'BUY' ? 'Zoek een ticker om details te laden' : 'Verkoop: vul ticker/velden in', 'info');
+                const costLabel = document.getElementById('cost-label');
+                const totalLabel = document.getElementById('total-label');
+                if (costLabel) costLabel.textContent = (t === 'SELL') ? 'Kosten (Bruto − TOTAAL)' : 'Kosten (TOTAAL − Bruto)';
+                if (totalLabel) totalLabel.textContent = (t === 'SELL') ? 'Totaal (netto) in eigen munt' : 'Totaal in eigen munt';
+                try { updateTotals(); } catch {}
             } else {
                 buySection?.classList.add('hidden');
                 if (txnPlaceholder) {
@@ -1241,6 +1245,42 @@
             formStatusEl.className = 'quote-pill ' + (colors[type] || colors.info);
         }
 
+        // Global toast helper (fixed position). Returns { close() }.
+        // durationMs: 0 => sticky until close(); default 2000ms.
+        // spinning: when true, shows a rotating refresh icon.
+        function showToast(message, type = 'info', durationMs = 2000, spinning = false) {
+            const root = document.getElementById('toast-root');
+            if (!root) return;
+            const palette = {
+                info:  { bg: 'bg-slate-900', text: 'text-white', icon: 'info' },
+                success:{ bg: 'bg-emerald-600', text: 'text-white', icon: 'check-circle' },
+                error: { bg: 'bg-rose-600', text: 'text-white', icon: 'alert-triangle' }
+            };
+            const p = palette[type] || palette.info;
+            const el = document.createElement('div');
+            el.className = `${p.bg} ${p.text} shadow-xl rounded-lg px-4 py-3 flex items-center gap-2 transform transition-all duration-300 pointer-events-auto`;
+            el.style.opacity = '0';
+            el.style.translate = '0 4px';
+            const icon = spinning ? 'refresh-cw' : p.icon;
+            const spinClass = spinning ? 'animate-spin' : '';
+            el.innerHTML = `<i data-lucide="${icon}" class="h-4 w-4 ${spinClass}"></i><span class="text-sm font-medium">${message}</span>`;
+            root.appendChild(el);
+            lucide.createIcons({ attrs: { class: 'h-4 w-4' } });
+            requestAnimationFrame(() => {
+                el.style.opacity = '1';
+                el.style.translate = '0 0';
+            });
+            const hide = () => {
+                el.style.opacity = '0';
+                el.style.translate = '0 4px';
+                setTimeout(() => el.remove(), 250);
+            };
+            if (durationMs && durationMs > 0) {
+                setTimeout(hide, durationMs);
+            }
+            return { close: hide };
+        }
+
         function updateQuoteSummary(quote) {
             if (!quoteNameEl || !quotePriceInput || !quoteSectorEl) return;
             quoteNameEl.textContent = quote.longName || quote.shortName || quote.symbol || '—';
@@ -1307,7 +1347,7 @@
         async function handlePositionSubmit(event) {
             event.preventDefault();
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
-            if (t !== 'BUY') {
+            if (t !== 'BUY' && t !== 'SELL') {
                 setFormStatus('Dit transactietype is nog niet actief.', 'info');
                 return;
             }
@@ -1322,12 +1362,16 @@
             const symbol = (tickerInput.value || '').trim().toUpperCase();
             const qty = parseFloat(quantityInput.value || '0');
             let overridePrice = parseFloat(quotePriceInput?.value || '0');
-            let avgPrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
+            let tradePrice = (overridePrice && overridePrice > 0) ? overridePrice : (lastQuote?.regularMarketPrice || 0);
             let transactionCost = parseFloat((document.getElementById('fee-local')?.value) || derivedCostInput?.value || '0');
-            const grossFromInputs = (qty * avgPrice);
+            const grossFromInputs = (qty * tradePrice);
             const finalProvided = parseFloat(finalTotalInput?.value || '0');
             if (finalTotalInput && finalProvided > 0) {
-                transactionCost = finalProvided - grossFromInputs;
+                if (t === 'BUY') {
+                    transactionCost = finalProvided - (qty * tradePrice);
+                } else {
+                    transactionCost = (qty * tradePrice) - finalProvided;
+                }
             }
             let selectedCurrency = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
             if (!selectedCurrency.match(/^[A-Z]{2,6}$/)) {
@@ -1347,7 +1391,7 @@
                 setFormStatus('Aantal moet groter dan 0 zijn', 'error');
                 return;
             }
-            if (!avgPrice || avgPrice <= 0) {
+            if (!tradePrice || tradePrice <= 0) {
                 setFormStatus('Laad eerst een koers (Zoek).', 'error');
                 return;
             }
@@ -1367,29 +1411,40 @@
             const feeAmount = transactionCost; 
             const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
             const isEur = (selectedCurrency === 'EUR');
-            const grossLocal = qty * avgPrice; 
-            const totalCostLocal = grossLocal + feeAmount; 
-            const totalCostEur = isEur ? totalCostLocal : (wkVal > 0 ? (totalCostLocal / wkVal) : NaN);
+            const grossLocal = qty * tradePrice; 
             const cashAvailable = Number(lastCashRow.current_price) || 0; 
-            if (!isFinite(totalCostEur) || totalCostEur <= 0) {
-                setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
-                return;
-            }
-            if (totalCostEur > cashAvailable + 1e-8) {
-                setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
-                return;
+            const priceEur = isEur ? tradePrice : (wkVal > 0 ? (tradePrice / wkVal) : NaN);
+            let totalEur = NaN;
+            if (t === 'BUY') {
+                const totalCostLocal = grossLocal + feeAmount; 
+                totalEur = isEur ? totalCostLocal : (wkVal > 0 ? (totalCostLocal / wkVal) : NaN);
+                if (!isFinite(totalEur) || totalEur <= 0) {
+                    setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
+                    return;
+                }
+                if (totalEur > cashAvailable + 1e-8) {
+                    setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
+                    return;
+                }
+            } else {
+                const totalProceedsLocal = grossLocal - feeAmount;
+                totalEur = isEur ? totalProceedsLocal : (wkVal > 0 ? (totalProceedsLocal / wkVal) : NaN);
+                if (!isFinite(totalEur) || totalEur < 0) {
+                    setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
+                    return;
+                }
             }
 
             const dateStr = (transactionDateInput?.value || '').trim() || '—';
             const summary = [
-                `Transactietype: Aankoop`,
+                `Transactietype: ${t === 'BUY' ? 'Aankoop' : 'Verkoop'}`,
                 `Ticker: ${symbol}`,
                 `Aantal: ${qty}`,
-                `Koers: ${avgPrice.toFixed(2)} ${selectedCurrency}`,
+                `Koers: ${tradePrice.toFixed(2)} ${selectedCurrency}`,
                 `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
                 `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`,
-                `Totaal (eigen munt): ${totalCostLocal.toFixed(2)} ${selectedCurrency}`,
-                `Totaal (EUR): ${totalCostEur.toFixed(2)} EUR`,
+                `${t==='BUY' ? 'Totaal (eigen munt)' : 'Netto (eigen munt)'}: ${(t==='BUY' ? (grossLocal+feeAmount) : (grossLocal-feeAmount)).toFixed(2)} ${selectedCurrency}`,
+                `Totaal (EUR): ${totalEur.toFixed(2)} EUR`,
                 `Transactiedatum: ${dateStr}`
             ].join('\n');
             const confirmMsg = `${summary}\n\nBen je zeker dat je deze transactie wil opslaan?`;
@@ -1399,7 +1454,7 @@
                 return;
             }
 
-            const priceNow = avgPrice; 
+            const priceNow = tradePrice; 
             const positionName = lastQuote?.longName || lastQuote?.shortName || symbol;
             const sector = lastQuote?.sector || 'Onbekend';
 
@@ -1416,7 +1471,7 @@
             }
 
             let insertedPortId = null;
-            if (existingRows && existingRows.length > 0) {
+            if (t === 'BUY' && existingRows && existingRows.length > 0) {
                 const existing = existingRows[0];
                 const prevQty = Number(existing.quantity) || 0;
                 const prevAvg = Number(existing.avg_price) || 0;
@@ -1426,7 +1481,7 @@
                     setFormStatus('Aantal moet groter dan 0 zijn', 'error');
                     return;
                 }
-                const newAvg = ((prevQty * prevAvg) + (qty * avgPrice)) / newQty;
+                const newAvg = ((prevQty * prevAvg) + (qty * priceEur)) / newQty;
                 const newFee = prevFee + feeAmount;
 
                 const { error: updError } = await supabase
@@ -1446,13 +1501,13 @@
                     return;
                 }
                 insertedPortId = existing.port_id;
-            } else {
+            } else if (t === 'BUY') {
                 const payload = {
                     groep_id: ACTIVE_GROUP_ID,
                     ticker: symbol,
                     name: positionName,
                     quantity: qty,
-                    avg_price: avgPrice,
+                    avg_price: priceEur,
                     current_price: priceNow,
                     sector: sector,
                     transactiekost: feeAmount
@@ -1463,9 +1518,37 @@
                     return;
                 }
                 insertedPortId = insertData?.[0]?.port_id || insertData?.[0]?.id || null;
+            } else if (t === 'SELL') {
+                if (!existingRows || existingRows.length === 0) {
+                    setFormStatus('Geen bestaande positie om te verkopen', 'error');
+                    return;
+                }
+                const existing = existingRows[0];
+                const prevQty = Number(existing.quantity) || 0;
+                if (qty > prevQty) {
+                    setFormStatus('Niet genoeg aandelen om te verkopen.', 'error');
+                    return;
+                }
+                const newQty = prevQty - qty;
+                const prevFee = Number(existing.transactiekost) || 0;
+                const newFee = prevFee + feeAmount;
+                const { error: updSellErr } = await supabase
+                    .from('Portefeuille')
+                    .update({
+                        quantity: newQty,
+                        current_price: priceNow,
+                        transactiekost: newFee
+                    })
+                    .eq('groep_id', ACTIVE_GROUP_ID)
+                    .eq('port_id', existing.port_id);
+                if (updSellErr) {
+                    setFormStatus(updSellErr.message || 'Bijwerken positie (verkoop) mislukt', 'error');
+                    return;
+                }
+                insertedPortId = existing.port_id;
             }
 
-            const nextCash = cashAvailable - totalCostEur;
+            const nextCash = t === 'BUY' ? (cashAvailable - totalEur) : (cashAvailable + totalEur);
             const cashUpdateOk = await updateCashBalance(nextCash);
             if (!cashUpdateOk) {
                 if (existingRows && existingRows.length > 0) {
@@ -1497,7 +1580,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        type: 'BUY',
+                        type: t,
                         ticker: symbol,
                         aantal: qty,
                         koers: priceNow,
@@ -1526,7 +1609,7 @@
             } catch (e) {
                 console.warn('Log initiële aankoop mislukt', e);
             }
-            setFormStatus('Positie opgeslagen', 'success');
+            setFormStatus(t === 'BUY' ? 'Aankoop opgeslagen' : 'Verkoop opgeslagen', 'success');
             if (positionForm) positionForm.reset();
             clearQuoteSummary();
             fetchPortfolio();

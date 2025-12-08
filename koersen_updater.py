@@ -1,6 +1,6 @@
 import time
-import yfinance as yf
-from config import supabase # Haal client uit config!
+from config import supabase  # Haal client uit config!
+from market_data import get_latest_price
 
 def update_stock_prices(groep_id=None):
     print("\n--- 🚀 Start koers update ---")
@@ -29,16 +29,9 @@ def update_stock_prices(groep_id=None):
         
         print(f"🔍 {ticker}...")
         try:
-            # Haal data (je kan hier ook market_data.py gebruiken als je wilt)
-            t = yf.Ticker(ticker)
-            price = None
-            try: price = t.fast_info.last_price
-            except: 
-                h = t.history(period="1d")
-                if not h.empty: price = h['Close'].iloc[-1]
-            
-            if price:
-                supabase.table('Portefeuille').update({"current_price": round(price, 2)}).eq('port_id', pid).execute()
+            price = get_latest_price(ticker)
+            if price is not None:
+                supabase.table('Portefeuille').update({"current_price": round(float(price), 2)}).eq('port_id', pid).execute()
                 count += 1
         except Exception as e:
             print(f"❌ Error {ticker}: {e}")
