@@ -130,15 +130,15 @@ def transactions_page():
 
 @main_bp.route("/api/groups/<int:group_id>/realized_profit")
 def api_realized_profit(group_id: int):
-        """Geeft 'gerealiseerde winst' in EUR terug, op basis van gemiddelde aankoopprijs per ticker.
-        Berekening (alles omgerekend naar EUR via `wisselkoers` in Transacties):
-            - Voor elke BUY: bouw gemiddelde aankoopprijs in EUR per ticker op
-            - Voor elke SELL: realized += aantal × ((verkoopkoers/wk) − gemiddelde_aankoopprijs_EUR)
-            - Voor elke FEE: realized -= (koers/wk)
-        Opmerking:
-            - Gebruikt gemiddelde aankoopprijs (AVG) per ticker; geen FIFO/lot-tracking.
-            - Als `wisselkoers` ontbreekt of <= 0, nemen we 1 aan (EUR).
-        """
+    """Geeft 'gerealiseerde winst' in EUR terug, op basis van gemiddelde aankoopprijs per ticker.
+    Berekening (alles omgerekend naar EUR via `wisselkoers` in Transacties):
+        - Voor elke BUY: bouw gemiddelde aankoopprijs in EUR per ticker op
+        - Voor elke SELL: realized += aantal × ((verkoopkoers/wk) − gemiddelde_aankoopprijs_EUR)
+        - Voor elke FEE: realized -= (koers/wk)
+    Opmerking:
+        - Gebruikt gemiddelde aankoopprijs (AVG) per ticker; geen FIFO/lot-tracking.
+        - Als `wisselkoers` ontbreekt of <= 0, nemen we 1 aan (EUR).
+    """
 
     if "user_id" not in session:
         return jsonify({"error": "Niet ingelogd"}), 401
