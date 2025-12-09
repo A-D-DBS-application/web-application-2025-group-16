@@ -30,6 +30,18 @@
                     <i data-lucide="piggy-bank" class="h-5 w-5"></i>
                     Kas
                 </a>
+                <a href="{{ url_for('groups.group_settings') }}" 
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-purple-200 text-purple-600 hover:bg-purple-50">
+                    <i data-lucide="settings" class="h-5 w-5"></i>
+                    Instellingen
+                </a>
+
+                <a href="{{ url_for('groups.liquiditeit_page') }}"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-100">
+                    <i data-lucide="droplet"></i>
+                    Liquiditeit
+                </a>
+
                 <a href="{{ url_for('main.home') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100">
                     <i data-lucide="home" class="h-5 w-5"></i>
                     Home
@@ -128,8 +140,11 @@
                     Instapkost per nieuwe deelnemer: € {{ entry_cost.entry_cost | round(2) }}
                 </p>
                 <p class="text-xs text-emerald-600">
-                    NAV per lid: € {{ entry_cost.nav_per_member | round(2) }} + 2% fee
+                    NAV per lid: € {{ entry_cost.nav_per_member | round(2) }}<br>
+                    + NAV fee: € {{ entry_cost.nav_fee | round(2) }}<br>
+                    
                 </p>
+
             </div>
             {% endif %}
 
@@ -139,10 +154,11 @@
                     Uitstapwaarde per lid: € {{ exit_cost.exit_payout | round(2) }}
                 </p>
                 <p class="text-xs text-amber-600">
-                    NAV: € {{ exit_cost.nav_per_member | round(2) }} -
-                    buffer: € {{ exit_cost.liquidatie_buffer | round(2) }} -
-                    1% fee
+                    NAV per lid: € {{ exit_cost.nav_per_member | round(2) }}<br>
+                    - NAV fee: € {{ exit_cost.nav_fee | round(2) }}<br>
+                    - Liquiditeitskost: € {{ exit_cost.liq_fee | round(2) }}
                 </p>
+
             </div>
             {% endif %}
 
