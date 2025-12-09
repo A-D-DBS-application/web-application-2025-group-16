@@ -64,7 +64,7 @@
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
                     AI Portefeuille Scan
                 </button>
-                <a href="{{ url_for('main.transactions_page') }}" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+                <a href="{{ url_for('transacties.transactions') }}" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
                     <i data-lucide="list" class="h-4 w-4"></i>
                     Transacties
                 </a>
@@ -1411,6 +1411,7 @@
             const feeAmount = transactionCost; 
             const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
             const isEur = (selectedCurrency === 'EUR');
+            const feeAmountEur = isEur ? feeAmount : (wkVal > 0 ? (feeAmount / wkVal) : 0);
             const grossLocal = qty * tradePrice; 
             const cashAvailable = Number(lastCashRow.current_price) || 0; 
             const priceEur = isEur ? tradePrice : (wkVal > 0 ? (tradePrice / wkVal) : NaN);
@@ -1482,7 +1483,7 @@
                     return;
                 }
                 const newAvg = ((prevQty * prevAvg) + (qty * priceEur)) / newQty;
-                const newFee = prevFee + feeAmount;
+                const newFee = prevFee + feeAmountEur;
 
                 const { error: updError } = await supabase
                     .from('Portefeuille')
@@ -1510,7 +1511,7 @@
                     avg_price: priceEur,
                     current_price: priceNow,
                     sector: sector,
-                    transactiekost: feeAmount
+                    transactiekost: feeAmountEur
                 };
                 const { data: insertData, error } = await supabase.from('Portefeuille').insert([payload]).select();
                 if (error) {

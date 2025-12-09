@@ -1,10 +1,13 @@
 from flask import Flask, redirect, url_for, session
 from config import SECRET_KEY
+from dotenv import load_dotenv
+load_dotenv()
 
 # Importeer de blueprints
 from routes.auth_routes import auth_bp
 from routes.group_routes import groups_bp
 from routes.main_routes import main_bp
+from routes.transacties import transacties_bp
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -14,6 +17,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.register_blueprint(auth_bp)
 app.register_blueprint(groups_bp)
 app.register_blueprint(main_bp)
+app.register_blueprint(transacties_bp)
 
 @app.route("/")
 def index():
