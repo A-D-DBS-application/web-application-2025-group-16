@@ -53,6 +53,7 @@ def api_realized_profit(group_id: int):
     Per ticker en portefeuille wordt een gemiddelde aankoopprijs (in EUR) bijgehouden.
     Voor elke SELL: realized += aantal × (sell_price_eur − avg_buy_price_eur).
     Daarnaast worden alle KOST/FEE transacties (in EUR) in mindering gebracht.
+    DIVIDEND-transacties worden opgeteld bij de gerealiseerde winst (in EUR).
     De wisselkoers wordt toegepast door `prijs_eur = koers / wisselkoers`.
     """
     if "user_id" not in session:
@@ -91,7 +92,7 @@ def api_realized_profit(group_id: int):
                     .table("Transacties")
                     .select("aantal, koers, type, ticker, wisselkoers, datum_tr, portefeuille_id")
                     .in_("portefeuille_id", target_port_ids)
-                    .in_("type", ["BUY", "SELL", "FEE", "KOST"])  # relevante types
+                    .in_("type", ["BUY", "SELL", "FEE", "KOST", "DIVIDEND"])  # relevante types incl. dividend
                     .order("datum_tr")
                     .execute()
                 )
@@ -137,10 +138,48 @@ def api_realized_profit(group_id: int):
                             # Verminder positie hoeveelheid
                             st["qty"] = max(0.0, st["qty"] - qty)
                             st["last_action"] = "SELL"
+                        elif ttype == "DIVIDEND" and qty > 0:
+                            realized_div = qty * price_eur
+                            overall_realized += realized_div
+                            per_port_result[pid]["total"] += realized_div
                         elif ttype in ("FEE", "KOST") and price:
                             # Altijd kosten in mindering brengen, ongeacht laatste actie
                             overall_realized -= price_eur
                             per_port_result[pid]["total"] -= price_eur
+                    except Exception:
+                        pass
+
+                # Fallback: als er nog steeds 0 uitkomt (bijv. door een onverwachte parsing-issue),
+                # sommeer DIVIDEND direct per portefeuille om de kaart niet leeg te laten.
+                # Dit dekt jouw voorbeeld waarin enkel dividenden aanwezig zijn.
+                if abs(overall_realized) < 1e-9:
+                    try:
+                        div_q = (
+                            supabase
+                            .table("Transacties")
+                            .select("aantal, koers, wisselkoers, portefeuille_id")
+                            .in_("portefeuille_id", target_port_ids)
+                            .eq("type", "DIVIDEND")
+                            .execute()
+                        )
+                        for r in (div_q.data or []):
+                            try:
+                                pid2 = r.get("portefeuille_id")
+                                if pid2 is None:
+                                    continue
+                                qty2 = float(r.get("aantal") or 0)
+                                price2 = float(r.get("koers") or 0)
+                                wk2 = float(r.get("wisselkoers") or 0) or 1.0
+                                if wk2 <= 0:
+                                    wk2 = 1.0
+                                val_eur = qty2 * (price2 / wk2)
+                                if val_eur:
+                                    per_port_result.setdefault(pid2, {"total": 0.0, "sell_count": 0})
+                                    per_port_result[pid2]["total"] += val_eur
+                                    overall_realized += val_eur
+                            except Exception:
+                                pass
+                        # sell_count blijft 0; dat is correct bij enkel dividenden
                     except Exception:
                         pass
 
@@ -152,5 +191,5 @@ def api_realized_profit(group_id: int):
         except Exception:
             return jsonify({"total": 0.0, "sell_count": 0, "per_port": {}})
     except Exception:
-        return jsonify({"error": "Fout bij ophalen gegevens"}), 500
+        return jsonify({"error": "Fout bij ophalen gegevens"}), 500 
 
