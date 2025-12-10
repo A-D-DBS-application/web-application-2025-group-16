@@ -12,7 +12,7 @@
       
       <a href="{{ url_for('main.portfolio') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/portfolio') else 'text-slate-600 hover:text-blue-600' }}">Portefeuille</a>
       
-      <a href="{{ url_for('main.transactions_page') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/transactions') else 'text-slate-600 hover:text-blue-600' }}">Transacties</a>
+                <a href="{{ url_for('transacties.transactions') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/transactions') else 'text-slate-600 hover:text-blue-600' }}">Transacties</a>
 
       <a href="{{ url_for('groups.group_dashboard') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/groups/current') else 'text-slate-600 hover:text-blue-600' }}">Groep Info</a>
 

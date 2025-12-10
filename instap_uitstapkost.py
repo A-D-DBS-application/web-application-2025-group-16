@@ -1,63 +1,130 @@
 from config import supabase
 
 
-def get_group_data(group_id: int):
-    """Ophalen van groep data"""
-    resp = supabase.table("Groep").select("*").eq("groep_id", group_id).execute()
-    if not resp.data:
-        return None
-    return resp.data[0]
-
-
-def count_members(group_id):
-    resp = supabase.table("groep_leden").select("ledenid").eq("groep_id", group_id).execute()
-    return len(resp.data) if resp.data else 0
-
+# --------------------------------------------------------
+#   NAV BEREKENEN (alleen portefeuille, geen kas)
+# --------------------------------------------------------
 def get_group_nav(group_id):
-    resp = supabase.table("Portefeuille").select("quantity, current_price").eq("groep_id", group_id).execute()
-    if not resp.data:
-        return 0
-    
-    total = 0
-    for row in resp.data:
-        qty = row.get("quantity") or 0
-        price = row.get("current_price") or 0
-        total += qty * price
-    
-    return total
+    port = supabase.table("Portefeuille") \
+        .select("quantity, current_price") \
+        .eq("groep_id", group_id).execute().data or []
+
+    nav_total = sum([float(r["quantity"]) * float(r["current_price"]) for r in port])
+
+    return nav_total
+
+
+# --------------------------------------------------------
+#   Liquiditeit totaal ophalen
+# --------------------------------------------------------
+def get_total_liquidity(group_id):
+    rows = supabase.table("Liquiditeit").select("*").eq("groep_id", group_id).execute().data or []
+    return sum(float(r["bedrag"]) for r in rows)
 
 
 
 
-# ---------- INSTAPKOST ----------
+# --------------------------------------------------------
+#   Instapkost berekenen
+# --------------------------------------------------------
 def calculate_entry_cost(group_id):
-    total_nav = get_group_nav(group_id)
-    members = count_members(group_id) or 1
+    try:
+        # --- NAV berekenen ---
+        nav_total = get_group_nav(group_id)
+        if nav_total is None:
+            return False, "NAV kon niet berekend worden"
 
-    nav_per_member = total_nav / members
-    entry_cost = nav_per_member * 1.02
+        # leden tellen
+        members = supabase.table("groep_leden") \
+            .select("*").eq("groep_id", group_id).execute().data or []
+        leden = len(members)
+        if leden == 0:
+            return False, "Geen leden gevonden"
 
-    return True, {
-        "nav_per_member": nav_per_member,
-        "entry_cost": entry_cost,
-        "fee_rate": 0.02
-    }
+        nav_per_member = nav_total / leden
+
+        # instellingen ophalen
+        settings = supabase.table("Groep") \
+            .select("*") \
+            .eq("groep_id", group_id) \
+            .single().execute().data
+
+        instap_nav_pct = float(settings.get("instap_nav_pct", 0))
+
+        # NAV fee
+        nav_fee = nav_per_member * (instap_nav_pct / 100)
+
+        # ❌ GEEN LIQUIDITEITSKOST VOOR INSTAPPERS
+        liq_fee = 0
+
+        entry_cost = nav_per_member + nav_fee
+
+        return True, {
+            "nav_per_member": nav_per_member,
+            "nav_fee": nav_fee,
+            "liq_fee": liq_fee,
+            "entry_cost": entry_cost
+        }
+
+    except Exception as e:
+        return False, str(e)
+
+
+
 
 
 def calculate_exit_cost(group_id):
-    group = get_group_data(group_id)
-    total_nav = get_group_nav(group_id)
-    members = count_members(group_id) or 1
+    try:
+        # 1) NAV ophalen
+        nav_total = get_group_nav(group_id)
+        if nav_total is None:
+            return False, "Kan NAV niet berekenen"
 
-    buffer = group.get("liquidatie_voorziening") or 0
+        # 2) aantal leden
+        members = supabase.table("groep_leden") \
+            .select("*") \
+            .eq("groep_id", group_id).execute().data or []
+        leden = len(members)
+        if leden == 0:
+            return False, "Geen leden"
 
-    nav_per_member = total_nav / members
-    base = nav_per_member - buffer
-    after_fee = base * 0.99
+        # NAV per lid
+        nav_per_member = nav_total / leden
 
-    return True, {
-        "nav_per_member": nav_per_member,
-        "liquidatie_buffer": buffer,
-        "exit_payout": after_fee,
-        "fee_rate": 0.01
-    }
+        # 3) instellingen ophalen
+        settings = supabase.table("Groep") \
+            .select("*") \
+            .eq("groep_id", group_id) \
+            .single().execute().data
+
+        uitstap_nav_pct = float(settings.get("uitstap_nav_pct", 0))
+        uitstap_liq_pct = float(settings.get("uitstap_liq_pct", 0))
+        liq_per_lid = settings.get("liq_per_lid", False)
+
+        # 4) totale liquiditeitsbuffer
+        total_liq = get_total_liquidity(group_id)
+
+        # NAV fee:
+        nav_fee = nav_per_member * (uitstap_nav_pct / 100)
+
+        # 5) Liquiditeitsfee:
+        if liq_per_lid:
+            # gelijk delen
+            liq_fee = total_liq / leden
+        else:
+            # percentage van totale liquiditeitsbuffer
+            liq_fee = (total_liq * (uitstap_liq_pct / 100)) / leden
+
+
+        # 6) totale uitstapwaarde
+        exit_payout = nav_per_member - nav_fee - liq_fee
+
+        return True, {
+            "nav_per_member": nav_per_member,
+            "nav_fee": nav_fee,
+            "liq_fee": liq_fee,
+            "exit_payout": exit_payout
+        }
+
+    except Exception as e:
+        return False, str(e)

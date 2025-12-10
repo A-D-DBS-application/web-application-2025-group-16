@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Liquiditeit – Groep</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass-card { background:white; border:1px solid #e2e8f0; border-radius:1rem; box-shadow:0 2px 4px rgba(0,0,0,0.05); }
+        .form-label { font-size:0.75rem; font-weight:600; text-transform:uppercase; color:#64748b; letter-spacing:0.08em; }
+        .form-input { width:100%; border:1px solid #d1d5db; border-radius:0.75rem; padding:0.6rem 0.9rem; font-size:0.95rem; }
+        .btn-primary { background:#2563eb; color:white; padding:0.7rem 1rem; border-radius:0.75rem; font-weight:600; transition:0.2s; }
+        .btn-primary:hover { background:#1d4ed8; }
+        .btn-red { background:#dc2626; color:white; padding:0.7rem 1rem; border-radius:0.75rem; font-weight:600; transition:0.2s; }
+        .btn-red:hover { background:#b91c1c; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 px-4 py-6">
+
+    {% include '_nav.html' %}
+
+    <main class="max-w-3xl mx-auto pt-6 space-y-8">
+
+        
+
+        <!-- Titel -->
+        <div>
+            <h1 class="text-3xl font-bold">Liquiditeit</h1>
+            <p class="text-slate-600">Beheer de cashbuffer van jullie beleggingsclub.</p>
+        </div>
+
+        <!-- Huidig totaal -->
+        <div class="glass-card p-6">
+            <p class="text-slate-500 text-sm">Totale liquiditeitsbuffer</p>
+            <h2 class="text-4xl font-bold text-blue-700 mt-1">
+                € {{ total_liq | round(2) }}
+            </h2>
+        </div>
+
+        <!-- Toevoegen/verwijderen -->
+        <div class="glass-card p-6 space-y-6">
+
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="wallet" class="h-5 w-5 text-slate-500"></i>
+                Cash wijzigen
+            </h2>
+
+            <!-- Toevoegen -->
+            <form method="POST" action="{{ url_for('groups.liquiditeit_add') }}" class="space-y-4">
+                <div>
+                    <label class="form-label">Bedrag toevoegen</label>
+                    <input type="number" name="amount" step="0.01" class="form-input" required>
+                </div>
+
+                <div>
+                    <label class="form-label">Beschrijving (optioneel)</label>
+                    <input type="text" name="description" class="form-input">
+                </div>
+
+                <button class="btn-primary w-full flex items-center justify-center gap-2">
+                    <i data-lucide="plus-circle" class="h-4 w-4"></i>
+                    Bedrag toevoegen
+                </button>
+            </form>
+
+            <!-- Verwijderen -->
+            <form method="POST" action="{{ url_for('groups.liquiditeit_remove_amount') }}" class="space-y-4 pt-4 border-t border-slate-200">
+                <div>
+                    <label class="form-label">Bedrag verwijderen</label>
+                    <input type="number" name="amount" step="0.01" class="form-input" required>
+                </div>
+
+                <button class="btn-red w-full flex items-center justify-center gap-2">
+                    <i data-lucide="minus-circle" class="h-4 w-4"></i>
+                    Bedrag verwijderen
+                </button>
+            </form>
+        </div>
+
+        <!-- Logboek -->
+        <div class="glass-card p-6">
+
+            <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+                <i data-lucide="history" class="h-5 w-5 text-slate-500"></i>
+                Transactielogboek
+            </h2>
+
+            {% if logs %}
+                <div class="space-y-3">
+
+                    {% for row in logs %}
+                    <div class="flex items-center justify-between bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                        
+                        <div>
+                            <p class="font-medium">{{ row.omschrijving or "Transactie" }}</p>
+                            <p class="text-xs text-slate-500">
+                                {{ row.created_at.replace("T", " ")[:19] }}
+
+                            </p>
+                        </div>
+
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm font-semibold 
+                                {% if row.bedrag > 0 %}text-emerald-600{% else %}text-rose-600{% endif %}">
+                                {{ "+" if row.bedrag > 0 else "–" }} € {{ row.bedrag|abs|round(2) }}
+                            </span>
+
+                            <form method="POST" action="{{ url_for('groups.liquiditeit_delete', log_id=row.id) }}">
+                                <button class="text-rose-600 hover:text-rose-800" title="Verwijder transactie">
+                                    <i data-lucide="trash" class="h-4 w-4"></i>
+                                </button>
+                            </form>
+                        </div>
+
+                    </div>
+                    {% endfor %}
+
+                </div>
+            {% else %}
+                <p class="text-slate-400 text-sm italic">Nog geen transacties.</p>
+            {% endif %}
+
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
+
+</body>
+</html>

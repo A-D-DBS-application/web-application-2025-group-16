@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 import secrets
 from instap_uitstapkost import calculate_entry_cost, calculate_exit_cost
+from config import supabase
 
 # Importeer functies uit jouw auth.py en config
 from auth import (
@@ -19,6 +20,16 @@ groups_bp = Blueprint('groups', __name__)
 def _generate_invite_code(length: int = 6) -> str:
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+def get_user_active_group():
+    """Geeft de actieve groep van de gebruiker op basis van session['group_id']."""
+    group_id = session.get("group_id")
+    if not group_id:
+        return None
+
+    resp = supabase.table("Groep").select("*").eq("groep_id", group_id).single().execute()
+    return resp.data
+
 
 def _current_group_membership():
     user_id = session.get("user_id")
@@ -227,6 +238,136 @@ def leave_group():
         create_group_request(session["group_id"], session["user_id"], "leave")
         flash("Uitstapaanvraag verstuurd.", "info")
     return redirect(url_for("main.home"))
+
+def safe_float(value, default=0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except:
+        return default
+
+
+# ------------------------------
+#   LIQUIDITEIT – overzicht
+# ------------------------------
+@groups_bp.route('/liquiditeit', methods=['GET'])
+def liquiditeit_page():
+    active_group = get_user_active_group()
+    if not active_group:
+        return redirect(url_for('main.portfolio'))
+
+    # JUISTE TABEL + JUISTE KOLOMNAMEN
+    liq = supabase.table("Liquiditeit") \
+        .select("*") \
+        .eq("groep_id", active_group["groep_id"]) \
+        .order("created_at", desc=True) \
+        .execute().data
+
+    total_liq = sum(float(r["bedrag"]) for r in liq) if liq else 0
+
+    return render_template(
+        'liquiditeit.html',
+        group=active_group,
+        logs=liq,
+        total_liq=total_liq
+    )
+
+
+# ------------------------------
+#   LIQUIDITEIT – toevoegen
+# ------------------------------
+@groups_bp.post("/liquiditeit/add")
+def liquiditeit_add():
+    active_group = get_user_active_group()
+    if not active_group:
+        return redirect(url_for('main.portfolio'))
+
+    bedrag = float(request.form["amount"])
+    omschrijving = request.form.get("description", "Toevoeging")
+
+    supabase.table("Liquiditeit").insert({
+        "groep_id": active_group["groep_id"],
+        "bedrag": bedrag,
+        "omschrijving": omschrijving
+    }).execute()
+
+    
+    return redirect(url_for("groups.liquiditeit_page"))
+
+
+# ------------------------------
+#   LIQUIDITEIT – verwijderen volledige log
+# ------------------------------
+@groups_bp.post("/liquiditeit/delete/<int:log_id>")
+def liquiditeit_delete(log_id):
+    supabase.table("Liquiditeit").delete().eq("id", log_id).execute()
+    
+    return redirect(url_for("groups.liquiditeit_page"))
+
+
+# ------------------------------
+#   LIQUIDITEIT – bedrag verminderen
+# ------------------------------
+@groups_bp.post("/liquiditeit/remove_amount")
+def liquiditeit_remove_amount():
+    active_group = get_user_active_group()
+    if not active_group:
+        return redirect(url_for('main.portfolio'))
+
+    amount = float(request.form["amount"])
+
+    supabase.table("Liquiditeit").insert({
+        "groep_id": active_group["groep_id"],
+        "bedrag": -abs(amount),
+        "omschrijving": "Verwijderd via bedrag"
+    }).execute()
+
+   
+    return redirect(url_for("groups.liquiditeit_page"))
+
+@groups_bp.route("/groups/settings")
+def group_settings():
+    if "user_id" not in session:
+        return redirect(url_for("auth.login"))
+
+    group = get_user_active_group()
+    if not group:
+        return redirect(url_for("main.home"))
+
+    # alleen hosts zien deze pagina
+    if not _is_current_user_host():
+
+        
+        return redirect(url_for("groups.group_dashboard"))
+
+    return render_template("group_settings.html", group=group)
+
+@groups_bp.post("/groups/update_cost_settings")
+def update_cost_settings():
+    group = get_user_active_group()
+    if not group:
+        return redirect(url_for("groups.group_dashboard"))
+
+    if not _is_current_user_host():
+        return redirect(url_for("groups.group_dashboard"))
+
+    instap_nav_pct = safe_float(request.form.get("instap_nav_pct"))
+    uitstap_nav_pct = safe_float(request.form.get("uitstap_nav_pct"))
+    uitstap_liq_pct = safe_float(request.form.get("uitstap_liq_pct"))
+
+    # gelijk verdelen checkbox
+    liq_per_lid = request.form.get("liq_per_lid") == "on"
+
+    supabase.table("Groep").update({
+        "instap_nav_pct": instap_nav_pct,
+        "uitstap_nav_pct": uitstap_nav_pct,
+        "uitstap_liq_pct": uitstap_liq_pct,
+        "liq_per_lid": liq_per_lid
+    }).eq("groep_id", group["groep_id"]).execute()
+
+    return redirect(url_for("groups.group_settings"))
+
 
 @groups_bp.route("/groups/delete", methods=["POST"])
 def delete_group_route():

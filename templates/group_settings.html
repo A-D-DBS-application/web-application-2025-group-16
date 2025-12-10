@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Instellingen – {{ group.name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .form-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.08em; }
+        .form-input { width: 100%; border: 1px solid #d1d5db; border-radius: 0.75rem; padding: 0.6rem 0.9rem; font-size: 0.95rem; }
+        .btn-primary { background-color: #2563eb; color:white; padding:0.7rem 1rem; border-radius:0.75rem; font-weight:600; transition:0.2s; }
+        .btn-primary:hover { background-color:#1d4ed8; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 px-4 py-6">
+
+    {% include '_nav.html' %}
+
+    <main class="max-w-3xl mx-auto pt-6 space-y-8">
+
+        
+
+        <div>
+            <h1 class="text-3xl font-bold">Instellingen</h1>
+            <p class="text-slate-600">Beheer instap/uitstap regels & kosten.</p>
+        </div>
+
+        <!-- Instellingen card -->
+        <div class="glass-card p-6 space-y-6">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="settings" class="h-5 w-5 text-slate-500"></i>
+                Instap- & Uitstapkosten
+            </h2>
+
+            <form method="POST" action="{{ url_for('groups.update_cost_settings') }}" class="space-y-5">
+
+                <!-- Instap NAV % -->
+                <div>
+                    <label class="form-label">Instap NAV %</label>
+                    <input 
+                        type="number"
+                        step="0.01"
+                        name="instap_nav_pct"
+                        value="{{ group.instap_nav_pct }}"
+                        class="form-input">
+                </div>
+
+                <!-- Uitstap NAV % -->
+                <div>
+                    <label class="form-label">Uitstap NAV %</label>
+                    <input 
+                        type="number"
+                        step="0.01"
+                        name="uitstap_nav_pct"
+                        value="{{ group.uitstap_nav_pct }}"
+                        class="form-input">
+                </div>
+
+                <!-- Uitstap liquiditeitskost % -->
+                <div>
+                    <label class="form-label">Uitstap Liquiditeitskost %</label>
+                    <input 
+                        type="number"
+                        step="0.01"
+                        name="uitstap_liq_pct"
+                        value="{{ group.uitstap_liq_pct }}"
+                        class="form-input">
+                </div>
+
+                <!-- Checkbox liq per lid -->
+                <label class="flex items-center gap-3 text-sm font-medium text-slate-700 pt-2">
+                    <input 
+                        type="checkbox"
+                        name="liq_per_lid"
+                        class="h-4 w-4"
+                        {% if group.liq_per_lid %}checked{% endif %}>
+                    Liquiditeitsbuffer gelijk verdelen per lid
+                </label>
+
+                <div class="pt-4">
+                    <button class="btn-primary w-full flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="h-4 w-4"></i>
+                        Instellingen opslaan
+                    </button>
+                </div>
+
+            </form>
+        </div>
+
+    </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

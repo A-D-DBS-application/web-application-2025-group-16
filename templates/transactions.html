@@ -62,7 +62,7 @@
                                 {{ tx.aantal }}
                             </td>
                             <td class="px-6 py-4 text-right text-slate-600 font-mono">
-                                {{ '%.2f'|format(tx.koers) }}
+                                {{ '%.6f'|format(tx.koers) }}
                             </td>
                             <td class="px-6 py-4 text-right font-bold text-slate-900 font-mono">
                                 {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
