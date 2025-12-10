@@ -199,7 +199,7 @@
                 <div class="grid md:grid-cols-3 gap-4">
                     <div>
                         <label class="form-label">Laatste koers (wijzigbaar)</label>
-                        <input id="quote-price-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <input id="quote-price-input" type="number" step="any" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                     <div>
                         <label class="form-label">Sector</label>
@@ -564,6 +564,8 @@
         if (lookupBtn) lookupBtn.addEventListener('click', handleLookup);
         if (positionForm) positionForm.addEventListener('submit', handlePositionSubmit);
         if (txnTypeSelect) txnTypeSelect.addEventListener('change', updateTransactionUI);
+        if (tickerInput) tickerInput.addEventListener('change', maybePrefillDividendCurrency);
+        if (tickerInput) tickerInput.addEventListener('blur', maybePrefillDividendCurrency);
         if (currencyInput) currencyInput.addEventListener('input', () => {
             currencyInput.value = currencyInput.value.toUpperCase();
         });
@@ -880,15 +882,30 @@
         function updateTransactionUI() {
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
             const labelMap = { 'BUY': 'Aankoop', 'SELL': 'Verkoop', 'DIVIDEND': 'Dividend', 'TRANSFER': 'Overschrijving', 'PAYOUT': 'Uitbetaling effecten' };
-            if (t === 'BUY' || t === 'SELL') {
+            if (t === 'BUY' || t === 'SELL' || t === 'DIVIDEND') {
                 buySection?.classList.remove('hidden');
                 txnPlaceholder?.classList.add('hidden');
                 if (positionSubmitBtn) positionSubmitBtn.disabled = false;
-                setFormStatus(t === 'BUY' ? 'Zoek een ticker om details te laden' : 'Verkoop: vul ticker/velden in', 'info');
+                if (t === 'DIVIDEND') {
+                    setFormStatus('Dividend: vul ticker en velden in', 'info');
+                    // Verberg Yahoo-lookup voor dividend
+                    if (lookupBtn) lookupBtn.classList.add('hidden');
+                    // Prefill munt/wk vanuit transacties
+                    maybePrefillDividendCurrency();
+                } else {
+                    setFormStatus(t === 'BUY' ? 'Zoek een ticker om details te laden' : 'Verkoop: vul ticker/velden in', 'info');
+                    if (lookupBtn) lookupBtn.classList.remove('hidden');
+                }
                 const costLabel = document.getElementById('cost-label');
                 const totalLabel = document.getElementById('total-label');
-                if (costLabel) costLabel.textContent = (t === 'SELL') ? 'Kosten (Bruto − TOTAAL)' : 'Kosten (TOTAAL − Bruto)';
+                if (costLabel) costLabel.textContent = (t === 'SELL') ? 'Kosten (Bruto − TOTAAL)' : (t === 'DIVIDEND' ? 'Afwijking (optioneel)' : 'Kosten (TOTAAL − Bruto)');
                 if (totalLabel) totalLabel.textContent = (t === 'SELL') ? 'Totaal (netto) in eigen munt' : 'Totaal in eigen munt';
+
+                // Verberg het Sector-veld bij Dividend
+                try {
+                    const sectorContainer = quoteSectorEl ? quoteSectorEl.closest('div') : null;
+                    if (sectorContainer) sectorContainer.classList.toggle('hidden', t === 'DIVIDEND');
+                } catch {}
                 try { updateTotals(); } catch {}
             } else {
                 buySection?.classList.add('hidden');
@@ -901,6 +918,29 @@
             }
         }
         updateTransactionUI();
+
+        async function maybePrefillDividendCurrency() {
+            const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
+            if (t !== 'DIVIDEND') return;
+            const sym = (tickerInput?.value || '').trim().toUpperCase();
+            if (!sym) return;
+            try {
+                const { data, error } = await supabase
+                    .from('Transacties')
+                    .select('munt,wisselkoers')
+                    .eq('ticker', sym)
+                    .order('datum_tr', { ascending: false })
+                    .limit(1);
+                if (!error && data && data[0]) {
+                    const cur = String(data[0].munt || 'EUR').toUpperCase();
+                    const wk = Number(data[0].wisselkoers) || (cur === 'EUR' ? 1 : undefined);
+                    if (currencyInput && cur) currencyInput.value = cur;
+                    const wkOutput = document.getElementById('wk-output');
+                    if (wkOutput && wk) wkOutput.value = String(wk);
+                    try { updateTotals(); } catch {}
+                }
+            } catch {}
+        }
 
         async function fetchPortfolio() {
             try {
@@ -1347,7 +1387,7 @@
         async function handlePositionSubmit(event) {
             event.preventDefault();
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
-            if (t !== 'BUY' && t !== 'SELL') {
+            if (t !== 'BUY' && t !== 'SELL' && t !== 'DIVIDEND') {
                 setFormStatus('Dit transactietype is nog niet actief.', 'info');
                 return;
             }
@@ -1369,8 +1409,10 @@
             if (finalTotalInput && finalProvided > 0) {
                 if (t === 'BUY') {
                     transactionCost = finalProvided - (qty * tradePrice);
-                } else {
+                } else if (t === 'SELL') {
                     transactionCost = (qty * tradePrice) - finalProvided;
+                } else {
+                    // DIVIDEND: geen kostenvergelijking; laat afwijking ongemoeid
                 }
             }
             let selectedCurrency = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
@@ -1391,9 +1433,11 @@
                 setFormStatus('Aantal moet groter dan 0 zijn', 'error');
                 return;
             }
-            if (!tradePrice || tradePrice <= 0) {
-                setFormStatus('Laad eerst een koers (Zoek).', 'error');
-                return;
+            if (t !== 'DIVIDEND') {
+                if (!tradePrice || tradePrice <= 0) {
+                    setFormStatus('Laad eerst een koers (Zoek).', 'error');
+                    return;
+                }
             }
             if (isNaN(transactionCost)) {
                 transactionCost = 0;
@@ -1427,24 +1471,45 @@
                     setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
                     return;
                 }
-            } else {
+            } else if (t === 'SELL') {
                 const totalProceedsLocal = grossLocal - feeAmount;
                 totalEur = isEur ? totalProceedsLocal : (wkVal > 0 ? (totalProceedsLocal / wkVal) : NaN);
                 if (!isFinite(totalEur) || totalEur < 0) {
                     setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
                     return;
                 }
+            } else if (t === 'DIVIDEND') {
+                // Dividend: gebruik opgegeven totalen; fallback naar qty*price als totaal ontbreekt
+                const eurInput = document.getElementById('final-total-eur');
+                const totalLocalInputVal = parseFloat(finalTotalInput?.value || '0') || 0;
+                const totalEurInputVal = parseFloat(eurInput?.value || '0') || 0;
+                if (totalEurInputVal > 0) {
+                    totalEur = totalEurInputVal;
+                } else if (totalLocalInputVal > 0) {
+                    totalEur = isEur ? totalLocalInputVal : (wkVal > 0 ? (totalLocalInputVal / wkVal) : NaN);
+                } else {
+                    totalEur = isEur ? grossLocal : (wkVal > 0 ? (grossLocal / wkVal) : NaN);
+                }
+                if (!isFinite(totalEur) || totalEur < 0) {
+                    setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
+                    return;
+                }
+                // Koers afleiden uit het totaal zodat Waarde(€) precies gelijk is aan Totaal in euro
+                if (qty > 0) {
+                    const localTotal = isEur ? totalEur : (wkVal > 0 ? (totalEur * wkVal) : 0);
+                    tradePrice = (localTotal / qty);
+                }
             }
 
             const dateStr = (transactionDateInput?.value || '').trim() || '—';
             const summary = [
-                `Transactietype: ${t === 'BUY' ? 'Aankoop' : 'Verkoop'}`,
+                `Transactietype: ${t === 'BUY' ? 'Aankoop' : (t === 'SELL' ? 'Verkoop' : 'Dividend')}`,
                 `Ticker: ${symbol}`,
                 `Aantal: ${qty}`,
                 `Koers: ${tradePrice.toFixed(2)} ${selectedCurrency}`,
                 `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
-                `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`,
-                `${t==='BUY' ? 'Totaal (eigen munt)' : 'Netto (eigen munt)'}: ${(t==='BUY' ? (grossLocal+feeAmount) : (grossLocal-feeAmount)).toFixed(2)} ${selectedCurrency}`,
+                `${t==='DIVIDEND' ? '' : `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`}`,
+                `${t==='BUY' ? 'Totaal (eigen munt)' : (t==='SELL' ? 'Netto (eigen munt)' : 'Totaal (eigen munt)')}: ${(t==='BUY' ? (grossLocal+feeAmount) : (t==='SELL' ? (grossLocal-feeAmount) : grossLocal)).toFixed(2)} ${selectedCurrency}`,
                 `Totaal (EUR): ${totalEur.toFixed(2)} EUR`,
                 `Transactiedatum: ${dateStr}`
             ].join('\n');
@@ -1472,7 +1537,13 @@
             }
 
             let insertedPortId = null;
-            if (t === 'BUY' && existingRows && existingRows.length > 0) {
+            if (t === 'DIVIDEND') {
+                if (!existingRows || existingRows.length === 0) {
+                    setFormStatus('Geen bestaande positie voor dit dividend.', 'error');
+                    return;
+                }
+                insertedPortId = existingRows[0].port_id;
+            } else if (t === 'BUY' && existingRows && existingRows.length > 0) {
                 const existing = existingRows[0];
                 const prevQty = Number(existing.quantity) || 0;
                 const prevAvg = Number(existing.avg_price) || 0;
@@ -1591,7 +1662,7 @@
                         portefeuille_id: insertedPortId
                     })
                 });
-                if (feeAmount && feeAmount > 0) {
+                if ((t === 'BUY' || t === 'SELL') && feeAmount && feeAmount > 0) {
                     await fetch('/api/transactions/log', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1610,7 +1681,7 @@
             } catch (e) {
                 console.warn('Log initiële aankoop mislukt', e);
             }
-            setFormStatus(t === 'BUY' ? 'Aankoop opgeslagen' : 'Verkoop opgeslagen', 'success');
+            setFormStatus(t === 'BUY' ? 'Aankoop opgeslagen' : (t === 'SELL' ? 'Verkoop opgeslagen' : 'Dividend opgeslagen'), 'success');
             if (positionForm) positionForm.reset();
             clearQuoteSummary();
             fetchPortfolio();
