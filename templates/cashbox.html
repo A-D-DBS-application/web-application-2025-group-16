@@ -70,7 +70,7 @@
                             {% for t in history %}
                                 <tr>
                                     <td class="py-3 text-slate-600">
-                                        {{ t.date or t[0] }}
+                                        {{ (t.date or t[0]).split('T')[0] if (t.date or t[0]) else '' }}
                                     </td>
                                     <td class="py-3">
                                         {% set amt = t.amount if t.amount is not none else t[1] %}

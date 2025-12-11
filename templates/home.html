@@ -41,24 +41,7 @@
                 </div>
             </div>
 
-            {% if group_snapshot %}
-            <div class="border border-blue-100 bg-blue-50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <p class="text-sm text-blue-500 font-semibold">Je groep</p>
-                    <h2 class="text-2xl font-bold text-blue-900">{{ group_snapshot.name }}</h2>
-                    <p class="text-blue-700 text-sm">{{ group_snapshot.member_total }} lid{% if group_snapshot.member_total != 1 %}den{% endif %}</p>
-                </div>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <div class="bg-white rounded-xl px-4 py-2 text-center text-sm text-slate-500">
-                        Code<br><span class="text-slate-900 font-semibold">{{ group_snapshot.code }}</span>
-                    </div>
-                    <a href="{{ url_for('groups.group_dashboard') }}" class="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow">
-                        <i data-lucide="external-link" class="h-5 w-5"></i>
-                        Open groepspagina
-                    </a>
-                </div>
-            </div>
-            {% endif %}
+            
 
             <div class="grid md:grid-cols-3 gap-4">
                 <a href="{{ url_for('groups.create_group') }}" class="group-action-card">
@@ -90,9 +73,7 @@
                 </a>
             </div>
 
-            <div class="text-center text-sm text-slate-400">
-                Heb je nog geen groep? Je kunt er altijd later een aanmaken of joinen.
-            </div>
+            
 
             <div class="group-list-card">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -114,20 +95,14 @@
                                     <span class="current-pill">Actief</span>
                                     {% endif %}
                                 </p>
-                                <p class="text-sm text-slate-500">Code: {{ group.code or "-" }} · Rol: {{ group.role or "member" }}</p>
+                                <p class="text-sm text-slate-500">Rol: {{ group.role or "member" }}</p>
                             </div>
                             <div class="group-list-meta">
-                                <p class="text-lg font-semibold text-slate-900">
-                                    {{ group.member_total if group.member_total is not none else "?" }}
-                                </p>
-                                <p class="text-xs uppercase tracking-wide text-slate-400">
-                                    {% set members = group.member_total if group.member_total is not none else 0 %}
-                                    {{ "lid" if members == 1 else "leden" }}
-                                </p>
+                                <!-- ledenaantal en label verwijderd -->
                             </div>
                             <form method="post" action="{{ url_for('groups.select_group', group_id=group.id) }}" class="open-group-form">
-                                <button type="submit" class="open-group-btn" {% if group.is_current %}disabled{% endif %}>
-                                    {% if group.is_current %}Geopend{% else %}Open groep{% endif %}
+                                <button type="submit" class="open-group-btn">
+                                    Open
                                 </button>
                             </form>
                         </div>

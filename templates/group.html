@@ -19,15 +19,21 @@
             <div>
                 <p class="text-sm uppercase tracking-wide text-slate-400 font-semibold">Groepsdashboard</p>
                 <h1 class="text-3xl font-bold text-slate-900">{{ group.name }}</h1>
-                <p class="text-slate-500">Gemaakt op {{ group.created_at or 'onbekende datum' }}</p>
+                {% if group.created_at %}
+                <p class="text-slate-500">Gemaakt op {{ group.created_at }}</p>
+                {% endif %}
             </div>
             <div class="flex flex-wrap gap-3 justify-end">
                 <a href="{{ url_for('main.portfolio') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50">
-                    <i data-lucide="pie-chart" class="h-5 w-5"></i>
+                    <span class="w-8 h-8 flex items-center justify-center rounded-full bg-blue-50 border border-blue-200 mr-2">
+                        <i data-lucide="pie-chart" class="h-5 w-5"></i>
+                    </span>
                     Portefeuille
                 </a>
                 <a href="{{ url_for('main.cashbox') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-200 text-emerald-600 hover:bg-emerald-50">
-                    <i data-lucide="piggy-bank" class="h-5 w-5"></i>
+                    <span class="w-8 h-8 flex items-center justify-center rounded-full bg-emerald-50 border border-emerald-200 mr-2">
+                        <i data-lucide="piggy-bank" class="h-5 w-5"></i>
+                    </span>
                     Kas
                 </a>
                 <a href="{{ url_for('groups.group_settings') }}" 
@@ -37,8 +43,10 @@
                 </a>
 
                 <a href="{{ url_for('groups.liquiditeit_page') }}"
-                class="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-100">
-                    <i data-lucide="droplet"></i>
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-cyan-200 text-cyan-600 hover:bg-cyan-50">
+                    <span class="w-8 h-8 flex items-center justify-center rounded-full bg-cyan-50 border border-cyan-200 mr-2">
+                        <i data-lucide="droplet" class="h-5 w-5"></i>
+                    </span>
                     Liquiditeit
                 </a>
 
@@ -78,7 +86,7 @@
                     <i data-lucide="users" class="h-5 w-5 text-blue-500"></i>
                     Ledenlijst
                 </h2>
-                <span class="text-sm text-slate-400">Laatste update: {{ group.created_at or 'onbekend' }}</span>
+                
             </div>
             <div class="divide-y divide-slate-100">
                 {% if members %}

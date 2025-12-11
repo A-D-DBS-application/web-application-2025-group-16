@@ -1,4 +1,5 @@
-body { font-family: Arial, sans-serif; margin: 2rem; }
-.error { color: #c00; }
-.btn { display:inline-block; padding:6px 12px; border:1px solid #333; border-radius:4px; text-decoration:none; color:#000; }
-button { padding:6px 12px; }
+
+/* Voeg extra padding-left toe aan het e-mailveld op de loginpagina */
+#email, #voornaam, #achternaam, #gsm {
+	padding-left: 0.75rem !important;
+}

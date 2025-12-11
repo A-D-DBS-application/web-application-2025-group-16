@@ -143,13 +143,7 @@
                 <div class="flex gap-2 items-center">
                     {% if active_group %}
                         {% if is_host %}
-                        <form action="{{ url_for('main.import_csv', group_id=active_group.id) }}" method="post" enctype="multipart/form-data" id="csv-form" class="hidden">
-                            <input type="file" name="file" id="csv-file-input" accept=".csv" onchange="document.getElementById('csv-form').submit()">
-                        </form>
-                        <button onclick="document.getElementById('csv-file-input').click()" class="flex items-center gap-2 px-4 py-2 bg-slate-100 border border-slate-200 rounded-full text-sm font-semibold hover:bg-slate-200 transition-colors text-slate-700">
-                            <i data-lucide="upload" class="h-4 w-4"></i>
-                            Import CSV
-                        </button>
+                        
                         {% endif %}
                     {% else %}
                         <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-sm">
@@ -206,7 +200,7 @@
                         <div id="quote-sector" class="quote-pill">—</div>
                     </div>
                     <div>
-                        <label class="form-label">Munt</label>
+                        <label class="form-label">Beursvaluta</label>
                         <input id="currency-input" list="currency-list" class="form-input" placeholder="Bijv. EUR" maxlength="6" {{ builder_disabled }}>
                         <datalist id="currency-list">
                             <option value="EUR"></option>
@@ -249,7 +243,7 @@
                         <input id="gross-total" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                     <div>
-                        <label id="total-label" class="form-label">Totaal in eigen munt</label>
+                        <label id="total-label" class="form-label">Totaal in beursvaluta</label>
                         <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
                     <div>
@@ -367,14 +361,14 @@
             <div class="glass-card p-6">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-slate-500 text-sm font-medium mb-1">Gerealiseerde Winst</p>
+                        <p class="text-slate-500 text-sm font-medium mb-1">Gerealiseerde Winst/Verlies</p>
                         <h2 id="realized-profit" class="text-3xl font-bold text-slate-900">€ 0,00</h2>
                     </div>
                     <div class="p-2 bg-indigo-50 rounded-lg">
                         <i data-lucide="check-circle" class="h-6 w-6 text-indigo-600"></i>
                     </div>
                 </div>
-                <p id="realized-count" class="text-slate-400 text-xs">— verkopen</p>
+                <p id="realized-count" class="text-slate-400 text-xs">inclusief dividenden</p>
             </div>
         </div>
 
@@ -414,7 +408,7 @@
                                 <th class="px-6 py-4">Sector</th>
                                 <th class="px-6 py-4">Munt</th>
                                 <th class="px-6 py-4 text-right">Aantal</th>
-                                <th class="px-6 py-4 text-right">Koers in eigen munt</th>
+                                <th class="px-6 py-4 text-right">Koers in beursvaluta</th>
                                 <th class="px-6 py-4 text-right">WK</th>
                                 <th class="px-6 py-4 text-right">Koers in euro</th>
                                 <th class="px-6 py-4 text-right">Waarde</th>
@@ -899,7 +893,7 @@
                 const costLabel = document.getElementById('cost-label');
                 const totalLabel = document.getElementById('total-label');
                 if (costLabel) costLabel.textContent = (t === 'SELL') ? 'Kosten (Bruto − TOTAAL)' : (t === 'DIVIDEND' ? 'Afwijking (optioneel)' : 'Kosten (TOTAAL − Bruto)');
-                if (totalLabel) totalLabel.textContent = (t === 'SELL') ? 'Totaal (netto) in eigen munt' : 'Totaal in eigen munt';
+                if (totalLabel) totalLabel.textContent = (t === 'SELL') ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
 
                 // Verberg het Sector-veld bij Dividend
                 try {
@@ -1045,7 +1039,7 @@
                 const total = Number(data.total || 0);
                 realizedProfitEl.textContent = eur.format(total);
                 realizedProfitEl.className = 'text-3xl font-bold ' + (total >= 0 ? 'text-emerald-600' : 'text-rose-600');
-                if (realizedCountEl) realizedCountEl.textContent = `${data.sell_count || 0} verkopen`;
+                if (realizedCountEl) realizedCountEl.textContent = 'inclusief dividenden';
             } catch (e) {
                 if (realizedProfitEl) realizedProfitEl.textContent = '€ 0,00';
             }

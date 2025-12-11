@@ -5,16 +5,18 @@
     </a>
 
     {% set p = request.path %}
-    <div class="flex gap-6 text-sm font-medium">
+    <div class="flex gap-6 text-sm font-bold">
       <a href="{{ url_for('main.home') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/home') or p=='/' else 'text-slate-600 hover:text-blue-600' }}">Home</a>
-      
-      <a href="{{ url_for('main.cashbox') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/cash') else 'text-slate-600 hover:text-blue-600' }}">Kas</a>
-      
-      <a href="{{ url_for('main.portfolio') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/portfolio') else 'text-slate-600 hover:text-blue-600' }}">Portefeuille</a>
-      
-                <a href="{{ url_for('transacties.transactions') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/transactions') else 'text-slate-600 hover:text-blue-600' }}">Transacties</a>
 
-      <a href="{{ url_for('groups.group_dashboard') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/groups/current') else 'text-slate-600 hover:text-blue-600' }}">Groep Info</a>
+      <a href="{{ url_for('main.cashbox') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/cash') else 'text-slate-600 hover:text-blue-600' }}">Kas</a>
+
+      <a href="{{ url_for('groups.group_settings') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/group_settings') else 'text-slate-600 hover:text-blue-600' }}">Instellingen</a>
+
+      <a href="{{ url_for('main.portfolio') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/portfolio') else 'text-slate-600 hover:text-blue-600' }}">Portefeuille</a>
+
+      <a href="{{ url_for('transacties.transactions') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/transactions') else 'text-slate-600 hover:text-blue-600' }}">Transacties</a>
+
+      <a href="{{ url_for('groups.group_dashboard') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/groups/current') else 'text-slate-600 hover:text-blue-600' }}">Groepsdashboard</a>
 
       <a href="{{ url_for('auth.logout') }}" class="text-rose-600 hover:text-rose-700">Uitloggen</a>
     </div>
