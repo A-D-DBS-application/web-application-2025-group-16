@@ -29,6 +29,68 @@
         .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
         .prose li { margin-bottom: 0.25rem; color: #475569; }
         .prose strong { color: #0f172a; font-weight: 600; }
+
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 0.75rem 0.75rem;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+        
+        .autocomplete-dropdown.active {
+            display: block;
+        }
+        
+        .autocomplete-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background-color 0.15s;
+        }
+        
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background-color: #eff6ff;
+        }
+        
+        .autocomplete-ticker {
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 0.95rem;
+        }
+        
+        .autocomplete-name {
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-top: 0.15rem;
+        }
+        
+        .autocomplete-sector {
+            display: inline-block;
+            background: #f1f5f9;
+            color: #64748b;
+            padding: 0.15rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+        }
+        
+        .autocomplete-loading,
+        .autocomplete-no-results {
+            padding: 0.75rem 1rem;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body class="text-slate-800">
@@ -2097,6 +2159,201 @@
         }
 
         fetchPortfolio();
+        class TickerAutocomplete {
+            constructor(inputElement, dropdownElement) {
+                this.input = inputElement;
+                this.dropdown = dropdownElement;
+                this.debounceTimer = null;
+                this.selectedIndex = -1;
+                this.results = [];
+                
+                this.init();
+            }
+            
+            init() {
+                // Input event met debouncing
+                this.input.addEventListener('input', (e) => {
+                    clearTimeout(this.debounceTimer);
+                    this.debounceTimer = setTimeout(() => {
+                        this.handleInput(e.target.value);
+                    }, 300);
+                });
+                
+                // Keyboard navigatie
+                this.input.addEventListener('keydown', (e) => {
+                    if (!this.dropdown.classList.contains('active')) return;
+                    
+                    switch(e.key) {
+                        case 'ArrowDown':
+                            e.preventDefault();
+                            this.selectNext();
+                            break;
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            this.selectPrevious();
+                            break;
+                        case 'Enter':
+                            e.preventDefault();
+                            if (this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
+                                this.selectTicker(this.results[this.selectedIndex]);
+                            }
+                            break;
+                        case 'Escape':
+                            this.hideDropdown();
+                            break;
+                    }
+                });
+                
+                // Close bij klikken buiten dropdown
+                document.addEventListener('click', (e) => {
+                    if (!this.input.contains(e.target) && !this.dropdown.contains(e.target)) {
+                        this.hideDropdown();
+                    }
+                });
+                
+                // Focus event
+                this.input.addEventListener('focus', () => {
+                    if (this.results.length > 0) {
+                        this.showDropdown();
+                    }
+                });
+            }
+            
+            async handleInput(query) {
+                const trimmed = query.trim().toUpperCase();
+                
+                if (trimmed.length < 1) {
+                    this.hideDropdown();
+                    return;
+                }
+                
+                this.showLoading();
+                
+                try {
+                    const response = await fetch(`/api/search-tickers?q=${encodeURIComponent(trimmed)}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Search failed');
+                    }
+                    
+                    const results = await response.json();
+                    this.results = results;
+                    
+                    if (results.length > 0) {
+                        this.displayResults(results);
+                    } else {
+                        this.showNoResults();
+                    }
+                } catch (error) {
+                    console.error('Autocomplete error:', error);
+                    this.hideDropdown();
+                }
+            }
+            
+            showLoading() {
+                this.dropdown.innerHTML = '<div class="autocomplete-loading">Zoeken...</div>';
+                this.dropdown.classList.add('active');
+            }
+            
+            showNoResults() {
+                this.dropdown.innerHTML = '<div class="autocomplete-no-results">Geen resultaten</div>';
+                this.dropdown.classList.add('active');
+            }
+            
+            displayResults(results) {
+                this.selectedIndex = -1;
+                
+                const html = results.map((result, index) => `
+                    <div class="autocomplete-item" data-index="${index}">
+                        <div class="autocomplete-ticker">${this.escapeHtml(result.ticker)}</div>
+                        <div class="autocomplete-name">${this.escapeHtml(result.name)}</div>
+                        <span class="autocomplete-sector">${this.escapeHtml(result.sector)}</span>
+                    </div>
+                `).join('');
+                
+                this.dropdown.innerHTML = html;
+                this.dropdown.classList.add('active');
+                
+                // Click handlers
+                this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+                    item.addEventListener('click', () => {
+                        this.selectTicker(results[index]);
+                    });
+                    
+                    item.addEventListener('mouseenter', () => {
+                        this.setSelectedIndex(index);
+                    });
+                });
+            }
+            
+            selectNext() {
+                if (this.selectedIndex < this.results.length - 1) {
+                    this.setSelectedIndex(this.selectedIndex + 1);
+                }
+            }
+            
+            selectPrevious() {
+                if (this.selectedIndex > 0) {
+                    this.setSelectedIndex(this.selectedIndex - 1);
+                }
+            }
+            
+            setSelectedIndex(index) {
+                const items = this.dropdown.querySelectorAll('.autocomplete-item');
+                items.forEach(item => item.classList.remove('selected'));
+                
+                this.selectedIndex = index;
+                if (items[index]) {
+                    items[index].classList.add('selected');
+                    items[index].scrollIntoView({ block: 'nearest' });
+                }
+            }
+            
+            selectTicker(result) {
+                this.input.value = result.ticker;
+                this.hideDropdown();
+                
+                if (lookupBtn) {
+                    lookupBtn.click();
+                }
+            }
+            
+            showDropdown() {
+                this.dropdown.classList.add('active');
+            }
+            
+            hideDropdown() {
+                this.dropdown.classList.remove('active');
+                this.selectedIndex = -1;
+            }
+            
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+        
+        // INITIALISEER AUTOCOMPLETE
+        let tickerAutocomplete = null;
+        
+        if (tickerInput) {
+            // Maak dropdown element
+            let autocompleteDropdown = document.getElementById('ticker-autocomplete-dropdown');
+            if (!autocompleteDropdown) {
+                autocompleteDropdown = document.createElement('div');
+                autocompleteDropdown.id = 'ticker-autocomplete-dropdown';
+                autocompleteDropdown.className = 'autocomplete-dropdown';
+                
+                const tickerContainer = tickerInput.parentElement;
+                tickerContainer.style.position = 'relative';
+                tickerContainer.appendChild(autocompleteDropdown);
+            }
+            
+            tickerAutocomplete = new TickerAutocomplete(tickerInput, autocompleteDropdown);
+            console.log('✅ Autocomplete initialized');
+        }
+        
     </script>
 </body>
 </html>

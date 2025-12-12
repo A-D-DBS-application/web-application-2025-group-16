@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 import pandas as pd
 import io
 import requests
+from fuzzy_search import search_tickers, refresh_ticker_index  
 
 # Imports
 from config import supabase, supabase_admin, SUPABASE_URL, SUPABASE_ANON_KEY
@@ -344,5 +345,31 @@ def api_refresh_wk():
         count = sync_exchange_rates_to_db(supabase, currencies)
         
         return jsonify({'updated': count, 'message': 'Koersen bijgewerkt'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+@main_bp.route('/api/search-tickers')
+def api_search_tickers():
+    """Eigen fuzzy search met Yahoo fallback."""
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+    
+    query = request.args.get('q', '').strip()
+    if not query or len(query) < 1:
+        return jsonify([])
+    
+    # Eigen algoritme + Yahoo fallback
+    results = search_tickers(query, supabase_client=supabase, limit=10, use_fallback=True)
+    return jsonify(results)
+
+@main_bp.route('/api/refresh-ticker-index', methods=['POST'])
+def api_refresh_ticker_index():
+    """Optioneel: refresh ticker index."""
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+    
+    try:
+        count = refresh_ticker_index(supabase)
+        return jsonify({'count': count, 'message': f'Index ververst met {count} tickers'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
