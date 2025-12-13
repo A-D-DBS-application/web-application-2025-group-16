@@ -7,91 +7,10 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .open-group-btn[disabled] { border-color: #cbd5f5; color: #94a3b8; background: #f8fafc; cursor: not-allowed; }
-        .form-label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 0.35rem; }
-        .form-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.65rem 0.9rem; font-size: 0.95rem; color: #0f172a; background: #fff; }
-        .form-input:disabled { background: #f8fafc; color: #94a3b8; }
-        .form-input[readonly] { border-color: #cbd5f5; border-style: dashed; background: #f8fbff; font-weight: 600; }
-        .quote-pill { border: 1px dashed #cbd5f5; border-radius: 0.75rem; padding: 0.65rem 0.9rem; background: #f8fbff; font-weight: 600; color: #0f172a; }
-        .btn-secondary { border: 1px solid #cbd5f5; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; color: #1d4ed8; background: #eff6ff; }
-        .btn-primary { background-color: #2563eb; color: white; padding: 0.6rem 1.1rem; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; transition: background-color 0.2s; }
-        .btn-primary:hover { background-color: #1d4ed8; }
-        .btn-primary:disabled { background-color: #94a3b8; cursor: not-allowed; }
-        .prose h3 { font-size: 1.1rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #1e293b; }
-        .prose p { margin-bottom: 0.8rem; line-height: 1.5; color: #475569; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
-        .prose li { margin-bottom: 0.25rem; color: #475569; }
-        .prose strong { color: #0f172a; font-weight: 600; }
-
-        .autocomplete-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-top: none;
-            border-radius: 0 0 0.75rem 0.75rem;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 1000;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            display: none;
-        }
-        
-        .autocomplete-dropdown.active {
-            display: block;
-        }
-        
-        .autocomplete-item {
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            border-bottom: 1px solid #f1f5f9;
-            transition: background-color 0.15s;
-        }
-        
-        .autocomplete-item:hover,
-        .autocomplete-item.selected {
-            background-color: #eff6ff;
-        }
-        
-        .autocomplete-ticker {
-            font-weight: 700;
-            color: #1e293b;
-            font-size: 0.95rem;
-        }
-        
-        .autocomplete-name {
-            color: #64748b;
-            font-size: 0.85rem;
-            margin-top: 0.15rem;
-        }
-        
-        .autocomplete-sector {
-            display: inline-block;
-            background: #f1f5f9;
-            color: #64748b;
-            padding: 0.15rem 0.5rem;
-            border-radius: 0.25rem;
-            font-size: 0.75rem;
-            margin-top: 0.25rem;
-        }
-        
-        .autocomplete-loading,
-        .autocomplete-no-results {
-            padding: 0.75rem 1rem;
-            text-align: center;
-            color: #94a3b8;
-            font-size: 0.85rem;
-        }
-    </style>
 </head>
 <body class="text-slate-800">
 
