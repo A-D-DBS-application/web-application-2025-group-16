@@ -118,6 +118,16 @@
 
     <script>
         lucide.createIcons();
+        
+        // Auto-dismiss flash messages na 3 seconden
+        setTimeout(() => {
+            const flashMessages = document.querySelectorAll('.flash');
+            flashMessages.forEach(msg => {
+                msg.style.transition = 'opacity 0.5s ease-out';
+                msg.style.opacity = '0';
+                setTimeout(() => msg.remove(), 500);
+            });
+        }, 3000);
     </script>
 </body>
 </html>

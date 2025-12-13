@@ -14,7 +14,26 @@
 
     <main class="max-w-3xl mx-auto pt-6 space-y-8">
 
-        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="space-y-2">
+                    {% for category, message in messages %}
+                        <div class="
+                            px-4 py-3 rounded-xl text-sm shadow-lg border
+                            {% if category == 'success' %}
+                                bg-emerald-50 border-emerald-300 text-emerald-700
+                            {% elif category == 'error' %}
+                                bg-rose-50 border-rose-300 text-rose-700
+                            {% else %}
+                                bg-blue-50 border-blue-300 text-blue-700
+                            {% endif %}
+                        ">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
 
         <div>
             <h1 class="text-3xl font-bold">Instellingen</h1>
@@ -87,6 +106,16 @@
 
     <script>
         lucide.createIcons();
+        
+        // Flash messages verwijderen na 3 seconden
+        setTimeout(() => {
+            const messages = document.querySelectorAll('[class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-blue-50"]');
+            messages.forEach(msg => {
+                msg.style.transition = 'opacity 0.5s ease-out';
+                msg.style.opacity = '0';
+                setTimeout(() => msg.remove(), 500);
+            });
+        }, 3000);
     </script>
 </body>
 </html>

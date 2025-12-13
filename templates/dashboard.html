@@ -36,7 +36,6 @@
                     {% endif %}
                 </div>
                 <h1 class="text-2xl font-bold text-slate-900">Overzicht per groep</h1>
-                <p class="text-slate-500 text-sm">Selecteer een groep om zijn portefeuille en rendement te bekijken.</p>
             </div>
             
             <div class="flex gap-2">
@@ -117,9 +116,8 @@
         <div class="glass-card p-6 mb-8">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                 <div>
-                    <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Portefeuille samenstellen</p>
-                    <h2 class="text-xl font-bold text-slate-900">Voeg posities toe aan de actieve groep</h2>
-                    <p class="text-slate-500 text-sm">Gebruik Yahoo Finance voor actuele koersen en details.</p>
+                    <p class="text-sm uppercase tracking-[0.3em] text-slate-400 font-semibold">Portefeuille samenstellen</p>
+                    <p class="text-sm uppercase tracking-[0.3em] text-slate-400 font-semibold">Voeg posities toe aan de groep</p>
                 </div>
                 <div class="flex gap-2 items-center">
                     {% if active_group %}
@@ -171,9 +169,9 @@
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-3 gap-4">
+                <div class="grid md:grid-cols-3 gap-4 mt-6">
                     <div>
-                        <label class="form-label">Laatste koers (wijzigbaar)</label>
+                        <label class="form-label">Koers (wijzigbaar)</label>
                         <input id="quote-price-input" type="number" step="any" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                     <div>
@@ -228,16 +226,16 @@
                         <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
                     <div id="derived-cost-wrapper">
-                        <label id="cost-label" class="form-label">Kosten (TOTAAL − Bruto)</label>
+                        <label id="cost-label" class="form-label">Kosten</label>
                         <input id="derived-cost" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                 </div>
 
                 <div id="fee-eur-wrapper" class="grid md:grid-cols-3 gap-4 mt-2">
                     <div>
-                        <label class="form-label">Kosten in euro</label>
+                        <label class="form-label">Kosten (€)</label>
                         <input id="fee-eur" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
-                        <div class="text-[11px] mt-1 text-slate-400">Afgeleid: kosten in eigen munt omgezet naar EUR via WK.</div>
+                        <div class="text-[11px] mt-1 text-slate-400">Afgeleid: kosten in beursvaluta omgezet naar EUR via WK.</div>
                     </div>
                 </div>
 
@@ -905,7 +903,7 @@
                 if (costLabel) {
                     const text = isPayout
                         ? 'Kosten (niet van toepassing)'
-                        : (isSell ? 'Kosten (Bruto − TOTAAL)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten (TOTAAL − Bruto)'));
+                        : (isSell ? 'Kosten (Bruto − netto)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten'));
                     costLabel.textContent = text;
                 }
                 if (totalLabel) totalLabel.textContent = (isSell || isPayout) ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
@@ -1171,7 +1169,7 @@
                             return '—';
                         })()}</td>
                         <td class="px-6 py-4 text-right text-slate-600 font-medium">${qty}</td>
-                        <td class="px-6 py-4 text-right text-slate-600">${eur.format(price)}</td>
+                        <td class="px-6 py-4 text-right text-slate-600">${price.toFixed(2)}</td>
                         <td class="px-6 py-4 text-right text-slate-600">${(function(){
                             const wk = Number(item.wisselkoers);
                             const cur = String(item.munt||item.currency||'').toUpperCase();
@@ -1182,8 +1180,8 @@
                         <td class="px-6 py-4 text-right text-slate-600">${(function(){
                             const wk = Number(item.wisselkoers);
                             const cur = String(item.munt||item.currency||'').toUpperCase();
-                            if (cur === 'EUR') return eur.format(price);
-                            if (!isNaN(wk) && wk > 0) return eur.format(price / wk);
+                            if (cur === 'EUR') return price.toFixed(2);
+                            if (!isNaN(wk) && wk > 0) return (price / wk).toFixed(2);
                             return '—';
                         })()}</td>
                         <td class="px-6 py-4 text-right font-bold text-slate-900">${eur.format(val)}</td>

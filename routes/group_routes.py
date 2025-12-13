@@ -366,6 +366,7 @@ def update_cost_settings():
         "liq_per_lid": liq_per_lid
     }).eq("groep_id", group["groep_id"]).execute()
 
+    flash("Instellingen succesvol opgeslagen!", "success")
     return redirect(url_for("groups.group_settings"))
 
 
