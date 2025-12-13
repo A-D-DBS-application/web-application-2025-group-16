@@ -32,7 +32,7 @@
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                     <p class="text-sm uppercase tracking-wide text-slate-400 font-semibold">InvestClub</p>
-                    <h1 class="text-3xl font-bold text-slate-900">Welkom terug!</h1>
+                    <h1 class="text-3xl font-bold text-slate-900">Welkom!</h1>
                     <p class="text-slate-500">Kies hoe je verder wilt gaan met je groep.</p>
                 </div>
                 <div class="bg-blue-50 p-4 rounded-2xl inline-flex items-center gap-3 text-blue-700">
@@ -91,9 +91,7 @@
                             <div class="group-list-info">
                                 <p class="text-base font-semibold text-slate-900 flex items-center gap-2">
                                     {{ group.name or "Onbekende groep" }}
-                                    {% if group.is_current %}
-                                    <span class="current-pill">Actief</span>
-                                    {% endif %}
+                                   
                                 </p>
                                 <p class="text-sm text-slate-500">Rol: {{ group.role or "member" }}</p>
                             </div>
