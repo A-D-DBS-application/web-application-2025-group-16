@@ -107,6 +107,9 @@ def api_realized_profit(group_id: int):
                             continue
                         ttype = (row.get("type") or "").upper()
                         ticker = (row.get("ticker") or "").upper()
+                        if ticker == 'CASH':
+                            # Cash transfers niet meenemen in winstberekening
+                            continue
                         qty = float(row.get("aantal") or 0)
                         price = float(row.get("koers") or 0)
                         wk = float(row.get("wisselkoers") or 0) or 1.0
@@ -192,4 +195,3 @@ def api_realized_profit(group_id: int):
             return jsonify({"total": 0.0, "sell_count": 0, "per_port": {}})
     except Exception:
         return jsonify({"error": "Fout bij ophalen gegevens"}), 500 
-

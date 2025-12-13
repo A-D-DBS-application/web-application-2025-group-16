@@ -45,34 +45,50 @@
                                 {{ tx.datum_tr or tx.created_at or '-' }}
                             </td>
                             <td class="px-6 py-4 font-bold uppercase text-xs">
+                                {% set is_cash = (tx.ticker == 'CASH') %}
+                                {% set cash_amount = tx.koers or 0 %}
+                                {% set cash_positive = is_cash and cash_amount >= 0 %}
+                                {% set cash_negative = is_cash and cash_amount < 0 %}
                                 {% if tx.type == 'BUY' %}
                                     <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Buy</span>
                                 {% elif tx.type == 'SELL' %}
                                     <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Sell</span>
                                 {% elif tx.type == 'FEE' %}
                                     <span class="text-slate-500 bg-slate-100 px-2 py-1 rounded">Kost</span>
+                                {% elif cash_positive %}
+                                    <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Transfer</span>
+                                {% elif cash_negative %}
+                                    <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Transfer</span>
                                 {% else %}
                                     <span class="text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ tx.type }}</span>
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 font-semibold text-slate-900">
-                                {{ tx.ticker }}
+                                {% if tx.ticker == 'CASH' %}Cash{% else %}{{ tx.ticker }}{% endif %}
                             </td>
                             <td class="px-6 py-4 text-right text-slate-600 font-mono">
-                                {{ tx.aantal }}
+                                {% if tx.ticker == 'CASH' %}—{% else %}{{ tx.aantal }}{% endif %}
                             </td>
                             <td class="px-6 py-4 text-right text-slate-600 font-mono">
-                                {{ '%.6f'|format(tx.koers) }}
+                                {% if tx.ticker == 'CASH' %}
+                                    € {{ '%.2f'|format(tx.koers or 0) }}
+                                {% else %}
+                                    {{ '%.6f'|format(tx.koers) }}
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 text-right font-bold text-slate-900 font-mono">
                                 {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
-                                € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
+                                {% if is_cash %}
+                                    € {{ '%.2f'|format(tx.koers or 0) }}
+                                {% else %}
+                                    € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 text-slate-500 text-xs">
-                                {{ tx.munt or 'EUR' }}
+                                {% if tx.ticker == 'CASH' %}EUR{% else %}{{ tx.munt or 'EUR' }}{% endif %}
                             </td>
                             <td class="px-6 py-4 text-right text-slate-400 text-xs font-mono">
-                                {{ '%.4f'|format(wk) }}
+                                {% if tx.ticker == 'CASH' %}—{% else %}{{ '%.4f'|format(wk) }}{% endif %}
                             </td>
                         </tr>
                         {% endfor %}
