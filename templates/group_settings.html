@@ -5,15 +5,7 @@
     <title>Instellingen – {{ group.name }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .glass-card { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .form-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.08em; }
-        .form-input { width: 100%; border: 1px solid #d1d5db; border-radius: 0.75rem; padding: 0.6rem 0.9rem; font-size: 0.95rem; }
-        .btn-primary { background-color: #2563eb; color:white; padding:0.7rem 1rem; border-radius:0.75rem; font-weight:600; transition:0.2s; }
-        .btn-primary:hover { background-color:#1d4ed8; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body class="bg-slate-50 text-slate-900 px-4 py-6">
