@@ -145,13 +145,41 @@ def api_cash_transfer():
     except Exception:
         amount = 0.0
     direction = str(payload.get("direction") or "in").lower()
+    target = str(payload.get("target") or "portfolio").lower()
     if amount <= 0:
         return jsonify({"error": "Bedrag moet groter dan 0 zijn"}), 400
     if direction not in ("in", "out"):
         return jsonify({"error": "Ongeldige richting"}), 400
+    if target not in ("portfolio", "kas"):
+        return jsonify({"error": "Ongeldig doel"}), 400
 
     gid = snap["id"]
     try:
+        if target == "kas":
+            ok_bal, current_bal = get_cash_balance_for_group(gid)
+            if not ok_bal:
+                return jsonify({"error": current_bal or "Kas saldo ophalen mislukt"}), 500
+            delta = amount if direction == "in" else -amount
+            next_kas = float(current_bal or 0) + delta
+            if next_kas < -1e-6:
+                return jsonify({"error": "Kas kan niet negatief worden"}), 400
+
+            ok_cash, cash_row = add_cash_transaction(
+                gid,
+                amount,
+                direction,
+                payload.get("description"),
+                session.get("user_id")
+            )
+            if not ok_cash:
+                return jsonify({"error": cash_row or "Kastransactie opslaan mislukt"}), 500
+
+            return jsonify({
+                "target": target,
+                "kas_balance": next_kas,
+                "cash_entry": cash_row
+            })
+
         res = supabase.table("Portefeuille").select("port_id,current_price").eq("groep_id", gid).eq("ticker", "CASH").limit(1).execute()
         cash_row = (res.data or [None])[0]
         if not cash_row:
@@ -171,10 +199,6 @@ def api_cash_transfer():
         port_id = cash_row.get("port_id") or cash_row.get("id")
         supabase.table("Portefeuille").update({"current_price": next_balance}).eq("port_id", port_id).execute()
 
-        ok_cash, cash_row = add_cash_transaction(gid, amount, direction, payload.get("description"), session.get("user_id"))
-        if not ok_cash:
-            return jsonify({"error": cash_row or "Cashtransactie opslaan mislukt"}), 500
-
         trade_type = "TRANSFER"
         price_value = amount if direction == "in" else -amount
         datum_tr = payload.get("date") or payload.get("datum_tr")
@@ -186,7 +210,7 @@ def api_cash_transfer():
             "balance": next_balance,
             "transaction": tx_row,
             "type": trade_type,
-            "cash_entry": cash_row
+            "target": target
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

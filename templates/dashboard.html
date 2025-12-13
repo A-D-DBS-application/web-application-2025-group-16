@@ -304,17 +304,17 @@
                         <label class="form-label">Bruto totaal (koers × aantal)</label>
                         <input id="gross-total" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
-                    <div>
+                    <div id="final-total-wrapper">
                         <label id="total-label" class="form-label">Totaal in beursvaluta</label>
                         <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
-                    <div>
+                    <div id="derived-cost-wrapper">
                         <label id="cost-label" class="form-label">Kosten (TOTAAL − Bruto)</label>
                         <input id="derived-cost" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-3 gap-4 mt-2">
+                <div id="fee-eur-wrapper" class="grid md:grid-cols-3 gap-4 mt-2">
                     <div>
                         <label class="form-label">Kosten in euro</label>
                         <input id="fee-eur" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
@@ -336,18 +336,29 @@
 
                 </div>
                 <div id="cash-section" class="hidden space-y-4">
-                    <div class="grid md:grid-cols-2 gap-4">
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="form-label">Doel</label>
+                            <select id="cash-transfer-target" class="form-input" {{ builder_disabled }}>
+                                <option value="portfolio">Portefeuille cash</option>
+                                <option value="kas">Kasrekening</option>
+                            </select>
+                        </div>
                         <div>
                             <label class="form-label">Richting</label>
                             <select id="cash-transfer-direction" class="form-input" {{ builder_disabled }}>
-                                <option value="in">Storting (+ cash)</option>
-                                <option value="out">Opname (- cash)</option>
+                                <option value="in">Storting (+)</option>
+                                <option value="out">Opname (-)</option>
                             </select>
                         </div>
                         <div>
                             <label class="form-label">Bedrag (EUR)</label>
                             <input id="cash-transfer-amount" type="number" step="0.01" min="0.01" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                         </div>
+                    </div>
+                    <div id="cash-transfer-description-row" class="hidden">
+                        <label class="form-label">Beschrijving (optioneel voor kas)</label>
+                        <input id="cash-transfer-description" type="text" class="form-input" placeholder="bv. cash storting" {{ builder_disabled }}>
                     </div>
                 </div>
                 <div class="flex justify-end mt-6">
@@ -419,20 +430,8 @@
                         <i data-lucide="piggy-bank" class="h-6 w-6 text-emerald-600"></i>
                     </div>
                 </div>
-                <p id="cash-status" class="text-slate-400 text-xs">Klaar om te investeren</p>
-                
-                {% if is_host %}
-                <div class="flex flex-col gap-2">
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input id="cash-adjust-input" type="number" step="0.01" min="0" class="form-input flex-1" placeholder="Bedrag" {{ builder_disabled }}>
-                        <div class="flex gap-2">
-                            <button id="cash-add-btn" type="button" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700" {{ builder_disabled }}>+ Cash</button>
-                            <button id="cash-remove-btn" type="button" class="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700" {{ builder_disabled }}>- Cash</button>
-                        </div>
-                    </div>
-                    <p class="text-xs text-slate-400">Gebruik deze knoppen voor stortingen of opnames buiten de app.</p>
-                </div>
-                {% endif %}
+                <p id="cash-status" class="text-slate-400 text-xs"></p>
+
             </div>
 
             <div class="glass-card p-6">
@@ -603,14 +602,17 @@
         const transactionCostInput = null; 
         const grossTotalInput = document.getElementById('gross-total');
         const finalTotalInput = document.getElementById('final-total');
+        const finalTotalWrapper = document.getElementById('final-total-wrapper');
         const derivedCostInput = document.getElementById('derived-cost');
+        const derivedCostWrapper = document.getElementById('derived-cost-wrapper');
         const feeEurInput = document.getElementById('fee-eur');
-        const cashAdjustInput = document.getElementById('cash-adjust-input');
-        const cashAddBtn = document.getElementById('cash-add-btn');
-        const cashRemoveBtn = document.getElementById('cash-remove-btn');
+        const feeEurWrapper = document.getElementById('fee-eur-wrapper');
         const cashSection = document.getElementById('cash-section');
+        const cashTransferTarget = document.getElementById('cash-transfer-target');
         const cashTransferDirection = document.getElementById('cash-transfer-direction');
         const cashTransferAmount = document.getElementById('cash-transfer-amount');
+        const cashTransferDescription = document.getElementById('cash-transfer-description');
+        const cashTransferDescriptionRow = document.getElementById('cash-transfer-description-row');
         const tradeModal = document.getElementById('trade-modal');
         const tradeForm = document.getElementById('trade-form');
         const tradeTitle = document.getElementById('trade-modal-title');
@@ -643,8 +645,7 @@
         if (currencyInput) currencyInput.addEventListener('input', () => {
             currencyInput.value = currencyInput.value.toUpperCase();
         });
-        if (cashAddBtn) cashAddBtn.addEventListener('click', () => handleCashAdjust('add'));
-        if (cashRemoveBtn) cashRemoveBtn.addEventListener('click', () => handleCashAdjust('remove'));
+        if (cashTransferTarget) cashTransferTarget.addEventListener('change', () => toggleCashTargetUI(cashTransferTarget.value));
         if (tradeForm) tradeForm.addEventListener('submit', handleTradeSubmit);
         
         tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
@@ -708,13 +709,18 @@
         
         async function updateTotals() {
             const txnType = (txnTypeSelect?.value || 'BUY').toUpperCase();
+            const isPayout = txnType === 'PAYOUT';
             const qty = parseFloat(quantityInput?.value || '0') || 0;
             const price = parseFloat(quotePriceInput?.value || '0') || 0;
             const gross = qty * price;
             if (grossTotalInput) grossTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
-            const final = parseFloat(finalTotalInput?.value || '0') || 0;
+            let final = parseFloat(finalTotalInput?.value || '0') || 0;
+            if (isPayout) {
+                final = gross;
+                if (finalTotalInput) finalTotalInput.value = (isFinite(gross) ? gross.toFixed(2) : '0.00');
+            }
             let derived = 0;
-            if (final > 0) {
+            if (final > 0 && !isPayout) {
                 derived = Math.abs(gross - final);
             }
             if (derivedCostInput) derivedCostInput.value = (isFinite(derived) ? derived.toFixed(2) : '0.00');
@@ -956,41 +962,70 @@
         function updateTransactionUI() {
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
             const labelMap = { 'BUY': 'Aankoop', 'SELL': 'Verkoop', 'DIVIDEND': 'Dividend', 'TRANSFER': 'Overschrijving', 'PAYOUT': 'Uitbetaling effecten' };
-            if (t === 'BUY' || t === 'SELL' || t === 'DIVIDEND') {
+            const tradableTypes = ['BUY', 'SELL', 'DIVIDEND', 'PAYOUT'];
+            if (tradableTypes.includes(t)) {
+                const isDividend = t === 'DIVIDEND';
+                const isSell = t === 'SELL';
+                const isPayout = t === 'PAYOUT';
                 buySection?.classList.remove('hidden');
                 txnPlaceholder?.classList.add('hidden');
                 cashSection?.classList.add('hidden');
                 if (positionSubmitBtn) positionSubmitBtn.disabled = false;
-                if (t === 'DIVIDEND') {
+                if (isDividend) {
                     setFormStatus('Dividend: vul ticker en velden in', 'info');
-                    // Verberg Yahoo-lookup voor dividend
                     if (lookupBtn) lookupBtn.classList.add('hidden');
-                    // Prefill munt/wk vanuit transacties
                     maybePrefillDividendCurrency();
                 } else {
-                    setFormStatus(t === 'BUY' ? 'Zoek een ticker om details te laden' : 'Verkoop: vul ticker/velden in', 'info');
+                    const statusMsg = isSell ? 'Verkoop: vul ticker/velden in' : (isPayout ? 'Uitbetaling: vul ticker en aantal in (geen kosten)' : 'Zoek een ticker om details te laden');
+                    setFormStatus(statusMsg, 'info');
                     if (lookupBtn) lookupBtn.classList.remove('hidden');
                     if (tickerInput && tickerInput.value === 'CASH') tickerInput.value = '';
                 }
                 const costLabel = document.getElementById('cost-label');
                 const totalLabel = document.getElementById('total-label');
-                if (costLabel) costLabel.textContent = (t === 'SELL') ? 'Kosten (Bruto − TOTAAL)' : (t === 'DIVIDEND' ? 'Afwijking (optioneel)' : 'Kosten (TOTAAL − Bruto)');
-                if (totalLabel) totalLabel.textContent = (t === 'SELL') ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
-
-                // Verberg het Sector-veld bij Dividend
+                if (costLabel) {
+                    const text = isPayout
+                        ? 'Kosten (niet van toepassing)'
+                        : (isSell ? 'Kosten (Bruto − TOTAAL)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten (TOTAAL − Bruto)'));
+                    costLabel.textContent = text;
+                }
+                if (totalLabel) totalLabel.textContent = (isSell || isPayout) ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
+                if (finalTotalInput) {
+                    finalTotalInput.readOnly = isPayout;
+                    finalTotalInput.classList.toggle('bg-slate-100', isPayout);
+                    finalTotalInput.classList.toggle('cursor-not-allowed', isPayout);
+                    if (isPayout && grossTotalInput) {
+                        finalTotalInput.value = grossTotalInput.value || '0.00';
+                    }
+                }
+                if (finalTotalWrapper) finalTotalWrapper.classList.toggle('hidden', isPayout);
+                if (derivedCostWrapper) derivedCostWrapper.classList.toggle('hidden', isPayout);
+                if (feeEurWrapper) feeEurWrapper.classList.toggle('hidden', isPayout);
+                if (derivedCostInput && isPayout) {
+                    derivedCostInput.value = '0.00';
+                }
+                if (feeEurInput && isPayout) {
+                    feeEurInput.value = '0.00';
+                }
                 try {
                     const sectorContainer = quoteSectorEl ? quoteSectorEl.closest('div') : null;
-                    if (sectorContainer) sectorContainer.classList.toggle('hidden', t === 'DIVIDEND');
+                    if (sectorContainer) sectorContainer.classList.toggle('hidden', isDividend);
                 } catch {}
                 try { updateTotals(); } catch {}
             } else if (t === 'TRANSFER') {
                 buySection?.classList.add('hidden');
                 txnPlaceholder?.classList.add('hidden');
                 cashSection?.classList.remove('hidden');
+                if (cashTransferTarget) {
+                    cashTransferTarget.value = 'portfolio';
+                    toggleCashTargetUI(cashTransferTarget.value);
+                } else {
+                    toggleCashTargetUI('portfolio');
+                }
                 if (positionSubmitBtn) positionSubmitBtn.disabled = false;
                 if (lookupBtn) lookupBtn.classList.add('hidden');
                 if (tickerInput) tickerInput.value = 'CASH';
-                setFormStatus('Cash verplaatsen: kies richting en bedrag.', 'info');
+                setFormStatus('Cash verplaatsen: kies richting, doel en bedrag.', 'info');
             } else {
                 buySection?.classList.add('hidden');
                 if (txnPlaceholder) {
@@ -1003,6 +1038,12 @@
             }
         }
         updateTransactionUI();
+
+        function toggleCashTargetUI(target) {
+            const isKas = (target === 'kas');
+            if (cashTransferDescriptionRow) cashTransferDescriptionRow.classList.toggle('hidden', !isKas);
+            if (!isKas && cashTransferDescription) cashTransferDescription.value = '';
+        }
 
         async function maybePrefillDividendCurrency() {
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
@@ -1480,7 +1521,8 @@
                 await processCashTransfer();
                 return;
             }
-            if (t !== 'BUY' && t !== 'SELL' && t !== 'DIVIDEND') {
+            const allowedTypes = ['BUY', 'SELL', 'DIVIDEND', 'PAYOUT'];
+            if (!allowedTypes.includes(t)) {
                 setFormStatus('Dit transactietype is nog niet actief.', 'info');
                 return;
             }
@@ -1498,7 +1540,7 @@
             if (finalTotalInput && finalProvided > 0) {
                 if (t === 'BUY') {
                     transactionCost = finalProvided - (qty * tradePrice);
-                } else if (t === 'SELL') {
+                } else if (t === 'SELL' || t === 'PAYOUT') {
                     transactionCost = (qty * tradePrice) - finalProvided;
                 } else {
                     // DIVIDEND: geen kostenvergelijking; laat afwijking ongemoeid
@@ -1531,6 +1573,9 @@
             if (isNaN(transactionCost)) {
                 transactionCost = 0;
             }
+            if (t === 'PAYOUT') {
+                transactionCost = 0;
+            }
             if (transactionCost < 0) {
                 setFormStatus('Kosten mogen niet kleiner dan 0 zijn', 'error');
                 return;
@@ -1541,7 +1586,7 @@
                 return;
             }
 
-            const feeAmount = transactionCost; 
+            const feeAmount = (t === 'PAYOUT') ? 0 : transactionCost; 
             const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
             const isEur = (selectedCurrency === 'EUR');
             const feeAmountEur = isEur ? feeAmount : (wkVal > 0 ? (feeAmount / wkVal) : 0);
@@ -1560,7 +1605,7 @@
                     setFormStatus('Niet genoeg cash voor deze transactie.', 'error');
                     return;
                 }
-            } else if (t === 'SELL') {
+            } else if (t === 'SELL' || t === 'PAYOUT') {
                 const totalProceedsLocal = grossLocal - feeAmount;
                 totalEur = isEur ? totalProceedsLocal : (wkVal > 0 ? (totalProceedsLocal / wkVal) : NaN);
                 if (!isFinite(totalEur) || totalEur < 0) {
@@ -1591,14 +1636,18 @@
             }
 
             const dateStr = (transactionDateInput?.value || '').trim() || '—';
+            const typeLabelMap = { BUY: 'Aankoop', SELL: 'Verkoop', DIVIDEND: 'Dividend', PAYOUT: 'Uitbetaling' };
+            const typeLabel = typeLabelMap[t] || t;
+            const totalLabelLocal = t === 'BUY' ? 'Totaal (eigen munt)' : ((t === 'SELL' || t === 'PAYOUT') ? 'Netto (eigen munt)' : 'Totaal (eigen munt)');
+            const totalValueLocal = t === 'BUY' ? (grossLocal + feeAmount) : ((t === 'SELL' || t === 'PAYOUT') ? (grossLocal - feeAmount) : grossLocal);
             const summary = [
-                `Transactietype: ${t === 'BUY' ? 'Aankoop' : (t === 'SELL' ? 'Verkoop' : 'Dividend')}`,
+                `Transactietype: ${typeLabel}`,
                 `Ticker: ${symbol}`,
                 `Aantal: ${qty}`,
                 `Koers: ${tradePrice.toFixed(2)} ${selectedCurrency}`,
                 `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
                 `${t==='DIVIDEND' ? '' : `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`}`,
-                `${t==='BUY' ? 'Totaal (eigen munt)' : (t==='SELL' ? 'Netto (eigen munt)' : 'Totaal (eigen munt)')}: ${(t==='BUY' ? (grossLocal+feeAmount) : (t==='SELL' ? (grossLocal-feeAmount) : grossLocal)).toFixed(2)} ${selectedCurrency}`,
+                `${totalLabelLocal}: ${totalValueLocal.toFixed(2)} ${selectedCurrency}`,
                 `Totaal (EUR): ${totalEur.toFixed(2)} EUR`,
                 `Transactiedatum: ${dateStr}`
             ].join('\n');
@@ -1679,7 +1728,7 @@
                     return;
                 }
                 insertedPortId = insertData?.[0]?.port_id || insertData?.[0]?.id || null;
-            } else if (t === 'SELL') {
+            } else if (t === 'SELL' || t === 'PAYOUT') {
                 if (!existingRows || existingRows.length === 0) {
                     setFormStatus('Geen bestaande positie om te verkopen', 'error');
                     return;
@@ -1770,8 +1819,15 @@
             } catch (e) {
                 console.warn('Log initiële aankoop mislukt', e);
             }
-            setFormStatus(t === 'BUY' ? 'Aankoop opgeslagen' : (t === 'SELL' ? 'Verkoop opgeslagen' : 'Dividend opgeslagen'), 'success');
+            const successMap = {
+                BUY: 'Aankoop opgeslagen',
+                SELL: 'Verkoop opgeslagen',
+                DIVIDEND: 'Dividend opgeslagen',
+                PAYOUT: 'Uitbetaling opgeslagen'
+            };
+            setFormStatus(successMap[t] || 'Transactie opgeslagen', 'success');
             if (positionForm) positionForm.reset();
+            if (txnTypeSelect) updateTransactionUI();
             clearQuoteSummary();
             fetchPortfolio();
         }
@@ -1782,6 +1838,7 @@
                 return;
             }
             const direction = (cashTransferDirection?.value === 'out') ? 'out' : 'in';
+            const target = (cashTransferTarget?.value === 'kas') ? 'kas' : 'portfolio';
             const rawAmount = parseFloat(cashTransferAmount?.value || '0');
             if (!rawAmount || rawAmount <= 0) {
                 setFormStatus('Bedrag moet groter dan 0 zijn', 'error');
@@ -1789,29 +1846,46 @@
             }
             setFormStatus('Cash bijwerken...', 'info');
             try {
-                const transfer = await postCashTransfer(rawAmount, direction, transactionDateInput?.value || null);
-                const next = Number(transfer.balance) || 0;
-                if (!lastCashRow) lastCashRow = {};
-                lastCashRow.current_price = next;
-                if (transfer?.transaction?.portefeuille_id) {
-                    lastCashRow.port_id = transfer.transaction.portefeuille_id;
+                const transfer = await postCashTransfer({
+                    amount: rawAmount,
+                    direction,
+                    target,
+                    dateValue: transactionDateInput?.value || null,
+                    description: cashTransferDescription?.value || null
+                });
+                if (target === 'portfolio') {
+                    const next = Number(transfer.balance) || 0;
+                    if (!lastCashRow) lastCashRow = {};
+                    lastCashRow.current_price = next;
+                    if (transfer?.transaction?.portefeuille_id) {
+                        lastCashRow.port_id = transfer.transaction.portefeuille_id;
+                    }
+                    updateCashCard(next);
+                    setFormStatus(direction === 'in' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
+                    await fetchPortfolio();
+                } else {
+                    const kasNextRaw = Number(transfer.kas_balance);
+                    const kasNext = Number.isFinite(kasNextRaw) ? kasNextRaw : 0;
+                    const kasLabel = Number.isFinite(kasNextRaw) ? kasNext.toFixed(2) : 'Onbekend';
+                    setFormStatus(direction === 'in' ? 'Kas aangevuld' : 'Kas opname geregistreerd', 'success');
+                    showToast(`Kas bijgewerkt. Nieuw saldo: € ${kasLabel}`, 'success', 2800);
                 }
-                updateCashCard(next);
                 if (cashTransferAmount) cashTransferAmount.value = '';
-                setFormStatus(direction === 'in' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
-                await fetchPortfolio();
+                if (cashTransferDescription) cashTransferDescription.value = '';
             } catch (err) {
                 console.error('Cash transfer mislukt', err);
                 setFormStatus(err.message || 'Cash bijwerken mislukt', 'error');
             }
         }
 
-        async function postCashTransfer(amount, direction, dateValue) {
+        async function postCashTransfer({ amount, direction, target, dateValue, description }) {
             const payload = {
                 amount,
                 direction,
+                target,
                 date: dateValue || null
             };
+            if (description) payload.description = description;
             const response = await fetch('/api/cash/transfer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2119,11 +2193,7 @@
         function updateCashCard(amount) {
             const cashEl = document.getElementById('cash-balance');
             if (cashEl) cashEl.textContent = eur.format(amount);
-            if (amount > 0) {
-                setCashStatus('Klaar om te investeren', 'info');
-            } else {
-                setCashStatus('Geen cash beschikbaar', 'error');
-            }
+            setCashStatus('', 'info');
         }
 
         async function ensureCashRow() {
@@ -2165,10 +2235,11 @@
         }
 
         function setCashControlsState(enabled) {
-            const flag = enabled && ACTIVE_GROUP_ID && IS_HOST;
-            if (cashAdjustInput) cashAdjustInput.disabled = !flag;
-            if (cashAddBtn) cashAddBtn.disabled = !flag;
-            if (cashRemoveBtn) cashRemoveBtn.disabled = !flag;
+            const flag = Boolean(enabled && ACTIVE_GROUP_ID && IS_HOST);
+            if (cashTransferTarget) cashTransferTarget.disabled = !flag;
+            if (cashTransferDirection) cashTransferDirection.disabled = !flag;
+            if (cashTransferAmount) cashTransferAmount.disabled = !flag;
+            if (cashTransferDescription) cashTransferDescription.disabled = !flag;
         }
 
         function setCashStatus(message, type = 'info') {
@@ -2181,39 +2252,6 @@
             };
             statusEl.textContent = message;
             statusEl.className = 'text-xs ' + (colors[type] || colors.info);
-        }
-
-        async function handleCashAdjust(mode) {
-            if (!ACTIVE_GROUP_ID) {
-                setCashStatus('Selecteer eerst een groep', 'error');
-                return;
-            }
-            if (!IS_HOST) {
-                setCashStatus('Alleen hosts kunnen cash verplaatsen', 'error');
-                return;
-            }
-            const raw = parseFloat(cashAdjustInput?.value || '0');
-            if (!raw || raw <= 0) {
-                setCashStatus('Voer een bedrag groter dan 0 in', 'error');
-                return;
-            }
-            setCashStatus('Cash bijwerken...', 'info');
-            try {
-                const result = await postCashTransfer(raw, mode === 'add' ? 'in' : 'out');
-                const nextBalance = Number(result.balance) || 0;
-                if (!lastCashRow) lastCashRow = {};
-                lastCashRow.current_price = nextBalance;
-                if (result?.transaction?.portefeuille_id) {
-                    lastCashRow.port_id = result.transaction.portefeuille_id;
-                }
-                updateCashCard(nextBalance);
-                if (cashAdjustInput) cashAdjustInput.value = '';
-                setCashStatus(mode === 'add' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
-                await fetchPortfolio();
-            } catch (err) {
-                console.error('Cashupdate mislukt', err);
-                setCashStatus(err.message || 'Cash bijwerken mislukt', 'error');
-            }
         }
 
         async function fetchLatestCashRow() {

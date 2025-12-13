@@ -92,7 +92,7 @@ def api_realized_profit(group_id: int):
                     .table("Transacties")
                     .select("aantal, koers, type, ticker, wisselkoers, datum_tr, portefeuille_id")
                     .in_("portefeuille_id", target_port_ids)
-                    .in_("type", ["BUY", "SELL", "FEE", "KOST", "DIVIDEND"])  # relevante types incl. dividend
+                    .in_("type", ["BUY", "SELL", "PAYOUT", "FEE", "KOST", "DIVIDEND"])  # relevante types incl. dividend
                     .order("datum_tr")
                     .execute()
                 )
@@ -131,7 +131,7 @@ def api_realized_profit(group_id: int):
                             st["avg_eur"] = (new_weighted / new_qty) if new_qty > 0 else 0.0
                             st["qty"] = new_qty
                             st["last_action"] = "BUY"
-                        elif ttype == "SELL" and qty > 0:
+                        elif ttype in ("SELL", "PAYOUT") and qty > 0:
                             # Realized = qty × (sell_price_eur − avg_buy_eur)
                             realized = qty * (price_eur - st["avg_eur"])
                             overall_realized += realized
