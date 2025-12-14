@@ -343,13 +343,13 @@ def api_log_transaction():
 @main_bp.route("/api/ai/analyze-stock", methods=["POST"])
 def analyze_stock():
     tick = request.get_json().get("ticker")
-    prompt = f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. Geef jouw antwoord in HTML."
+    prompt = f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. Output mag geen tabellen bevatten en geef jouw antwoord in HTML."
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
 @main_bp.route("/api/ai/analyze-portfolio", methods=["POST"])
 def analyze_portfolio():
     data = request.get_json()
-    prompt = f"Maak een diepe analyse van deze portefeuille: {data}. Geef jouw antwoord in HTML."
+    prompt = f"Maak een diepe analyse van deze portefeuille: {data}. Output mag geen tabellen bevatten en geef jouw antwoord in HTML."
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
 # --- IMPORT CSV ROUTE (ONTBRAK EERDER) ---
