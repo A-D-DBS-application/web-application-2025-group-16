@@ -53,20 +53,49 @@ def _current_group_snapshot():
 def _list_user_groups():
     uid = session.get("user_id")
     if not uid: return []
+    
+    # 1. Haal de data op
     ok, memberships = list_memberships_for_user(uid)
-    if not memberships: return []
-    ids = [m["group_id"] for m in memberships]
-    ok, groups = list_groups_by_ids(ids)
+    
+    # 2. CRUCIALE CHECK: Is het gelukt (ok is True) EN is het een lijst?
+    if not ok or not isinstance(memberships, list):
+        # Optioneel: print de fout in je logs om te zien wat er mis is
+        print(f"DEBUG: list_memberships failed or not a list: {memberships}")
+        return []
+
+    # 3. Check of de lijst niet leeg is
+    if not memberships: 
+        return []
+
+    # 4. Veilige list comprehension (check of m wel een dict is)
+    ids = [m["group_id"] for m in memberships if isinstance(m, dict) and "group_id" in m]
+    
+    if not ids:
+        return []
+
+    ok_groups, groups = list_groups_by_ids(ids)
     
     res = []
-    g_map = {g["id"]: g for g in (groups or [])}
+    # Zorg dat groups ook echt een lijst is voordat we verder gaan
+    if not ok_groups or not isinstance(groups, list):
+        groups = []
+
+    g_map = {g["id"]: g for g in groups if isinstance(g, dict) and "id" in g}
     cur = session.get("group_id")
+    
     for m in memberships:
-        g = g_map.get(m["group_id"])
+        # Extra veiligheid
+        if not isinstance(m, dict): continue
+        
+        gid = m.get("group_id")
+        g = g_map.get(gid)
+        
         if g:
             res.append({
-                "id": g["id"], "name": g["name"], "role": m.get("role"),
-                "is_current": g["id"] == cur
+                "id": g["id"], 
+                "name": g.get("name") or g.get("groep_naam"), # Fallback voor naam
+                "role": m.get("role") or m.get("rol"),        # Fallback voor rol
+                "is_current": (g["id"] == cur)
             })
     return res
 
