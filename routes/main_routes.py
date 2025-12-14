@@ -31,18 +31,23 @@ def _current_group_snapshot():
     
     if not mem:
         ok, mem = get_membership_for_user(uid)
-        if mem: session["group_id"] = mem["group_id"]
+        if mem and isinstance(mem, dict): 
+            session["group_id"] = mem.get("group_id")
     
-    if not mem: return None
+    # Validate: mem moet een dict zijn met group_id key
+    if not mem or not isinstance(mem, dict) or "group_id" not in mem: 
+        return None
 
     ok, group = get_group_by_id(mem["group_id"])
     if not group: return None
     
-    ok, count = count_group_members(group["id"])
+    ok, count = count_group_members(group.get("id") or group.get("groep_id"))
     return {
-        "id": group["id"], "name": group["name"], 
-        "code": group.get("invite_code"), "member_total": count or 0,
-        "role": mem.get("role")
+        "id": group.get("id") or group.get("groep_id"), 
+        "name": group.get("name") or group.get("groep_naam"), 
+        "code": group.get("invite_code"), 
+        "member_total": count or 0,
+        "role": mem.get("role") or mem.get("rol")
     }
 
 def _list_user_groups():
