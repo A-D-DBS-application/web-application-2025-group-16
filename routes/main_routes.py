@@ -305,13 +305,13 @@ def api_log_transaction():
 @main_bp.route("/api/ai/analyze-stock", methods=["POST"])
 def analyze_stock():
     tick = request.get_json().get("ticker")
-    prompt = f"Analyseer aandeel {tick}. Geef koop/verkoop advies in HTML."
+    prompt = f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. Geef jouw antwoord in HTML."
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
 @main_bp.route("/api/ai/analyze-portfolio", methods=["POST"])
 def analyze_portfolio():
     data = request.get_json()
-    prompt = f"Analyseer deze portfolio: {data}. Geef advies in HTML."
+    prompt = f"Maak een diepe analyse van deze portefeuille: {data}. Geef jouw antwoord in HTML."
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
 # --- IMPORT CSV ROUTE (ONTBRAK EERDER) ---
