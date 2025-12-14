@@ -1321,7 +1321,8 @@
             const colors = {
                 info: 'text-slate-500',
                 success: 'text-emerald-600',
-                error: 'text-rose-600'
+                error: 'text-rose-600',
+                warning: 'text-amber-600'
             };
             formStatusEl.textContent = message;
             formStatusEl.className = 'quote-pill ' + (colors[type] || colors.info);
@@ -1702,51 +1703,92 @@
             }
 
             if (lastCashRow) lastCashRow.current_price = nextCash;
-            try {
-                await fetch('/api/transactions/log', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: t,
-                        ticker: symbol,
-                        aantal: qty,
-                        koers: priceNow,
-                        wisselkoers: (parseFloat(document.getElementById('wk-output')?.value || '0') || 1),
-                        munt: selectedCurrency,
-                        datum_tr: (transactionDateInput?.value || null),
-                        portefeuille_id: insertedPortId
-                    })
-                });
-                if ((t === 'BUY' || t === 'SELL') && feeAmount && feeAmount > 0) {
-                    await fetch('/api/transactions/log', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'FEE',
-                            ticker: symbol,
-                            aantal: 1,
-                            koers: feeAmount,
-                            wisselkoers: (parseFloat(document.getElementById('wk-output')?.value || '0') || 1),
-                            munt: selectedCurrency,
-                            datum_tr: (transactionDateInput?.value || null),
-                            portefeuille_id: insertedPortId
-                        })
-                    });
+            const wkForLog = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
+            const primaryLog = await logTransaction({
+                type: t,
+                ticker: symbol,
+                aantal: qty,
+                koers: priceNow,
+                wisselkoers: wkForLog,
+                munt: selectedCurrency,
+                datum_tr: (transactionDateInput?.value || null),
+                portefeuille_id: insertedPortId
+            }, 'transactie');
+
+            let logIssue = primaryLog.ok ? null : (primaryLog.error || 'Loggen mislukt');
+            if (primaryLog.ok && (t === 'BUY' || t === 'SELL') && feeAmount && feeAmount > 0) {
+                const feeLog = await logTransaction({
+                    type: 'FEE',
+                    ticker: symbol,
+                    aantal: 1,
+                    koers: feeAmount,
+                    wisselkoers: wkForLog,
+                    munt: selectedCurrency,
+                    datum_tr: (transactionDateInput?.value || null),
+                    portefeuille_id: insertedPortId
+                }, 'kost');
+                if (!feeLog.ok) {
+                    logIssue = feeLog.error || 'Loggen van kosten mislukt';
                 }
-            } catch (e) {
-                console.warn('Log initiële aankoop mislukt', e);
             }
+
             const successMap = {
                 BUY: 'Aankoop opgeslagen',
                 SELL: 'Verkoop opgeslagen',
                 DIVIDEND: 'Dividend opgeslagen',
                 PAYOUT: 'Uitbetaling opgeslagen'
             };
-            setFormStatus(successMap[t] || 'Transactie opgeslagen', 'success');
+            if (!logIssue && selectedCurrency && selectedCurrency !== 'EUR') {
+                await ensureExchangeRate(selectedCurrency);
+            }
+
+            if (logIssue) {
+                setFormStatus(`Transactie verwerkt maar loggen faalde: ${logIssue}`, 'warning');
+            } else {
+                setFormStatus(successMap[t] || 'Transactie opgeslagen', 'success');
+            }
             if (positionForm) positionForm.reset();
             if (txnTypeSelect) updateTransactionUI();
             clearQuoteSummary();
             fetchPortfolio();
+        }
+
+        async function logTransaction(payload, contextLabel = 'transactie') {
+            try {
+                const response = await fetch('/api/transactions/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+                let data = {};
+                try {
+                    data = await response.json();
+                } catch {}
+                if (!response.ok) {
+                    const message = (data && data.error) ? data.error : `${contextLabel} log mislukt`;
+                    return { ok: false, error: message };
+                }
+                return { ok: true, data };
+            } catch (error) {
+                console.warn(`Loggen van ${contextLabel} fout`, error);
+                return { ok: false, error: error.message || `${contextLabel} log fout` };
+            }
+        }
+
+        async function ensureExchangeRate(currencyCode) {
+            const code = String(currencyCode || '').trim().toUpperCase();
+            if (!code || code === 'EUR') return;
+            try {
+                await fetch('/api/refresh-wk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ currencies: [code] })
+                });
+            } catch (err) {
+                console.warn('Wisselkoers synchronisatie mislukt', err);
+            }
         }
 
         async function processCashTransfer() {

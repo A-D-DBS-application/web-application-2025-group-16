@@ -108,10 +108,8 @@ class GroepAanvragen(Base):
 
 class Wisselkoersen(Base):
     __tablename__ = "Wisselkoersen"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    munt = Column(String, unique=True, nullable=False)
-    wk = Column(Float)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    munt = Column(String, primary_key=True)
+    wk = Column(Float, nullable=False)
 
 
 def init_db():
