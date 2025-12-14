@@ -53,6 +53,9 @@ def api_log_transaction():
     """Log een transactie in de `Transacties`-tabel via helper in `auth.py`. Vereist login en host."""
     if "user_id" not in session:
         return jsonify({"error": "Login"}), 401
+    # Controleer expliciet server-side of gebruiker host is
+    if not _is_host():
+        return jsonify({"error": "Alleen hosts"}), 403
     # In eerdere implementatie werd host-check via group snapshot gedaan; hier veronderstellen we reeds geautoriseerde UI.
     data = request.get_json() or {}
     ok, res = log_portfolio_transaction(

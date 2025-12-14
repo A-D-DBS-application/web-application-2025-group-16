@@ -292,6 +292,11 @@ def liquiditeit_add():
     if not active_group:
         return redirect(url_for('main.portfolio'))
 
+    # Alleen host mag toevoegen
+    if not _is_current_user_host():
+        flash("Alleen hosts kunnen de liquiditeit wijzigen.", "error")
+        return redirect(url_for("groups.liquiditeit_page"))
+
     bedrag = float(request.form["amount"])
     omschrijving = request.form.get("description", "Toevoeging")
 
@@ -310,8 +315,23 @@ def liquiditeit_add():
 # ------------------------------
 @groups_bp.post("/liquiditeit/delete/<int:log_id>")
 def liquiditeit_delete(log_id):
+    active_group = get_user_active_group()
+    if not active_group:
+        return redirect(url_for('main.portfolio'))
+
+    # Alleen host mag verwijderen
+    if not _is_current_user_host():
+        flash("Alleen hosts kunnen transacties verwijderen.", "error")
+        return redirect(url_for("groups.liquiditeit_page"))
+
+    # Zorg dat de log entry bij deze groep hoort
+    row = supabase.table("Liquiditeit").select("id,groep_id").eq("id", log_id).limit(1).execute().data
+    entry = (row or [None])[0]
+    if not entry or entry.get("groep_id") != active_group["groep_id"]:
+        flash("Transactie niet gevonden of geen rechten.", "error")
+        return redirect(url_for("groups.liquiditeit_page"))
+
     supabase.table("Liquiditeit").delete().eq("id", log_id).execute()
-    
     return redirect(url_for("groups.liquiditeit_page"))
 
 
@@ -323,6 +343,10 @@ def liquiditeit_remove_amount():
     active_group = get_user_active_group()
     if not active_group:
         return redirect(url_for('main.portfolio'))
+    # Alleen host mag verwijderen
+    if not _is_current_user_host():
+        flash("Alleen hosts kunnen de liquiditeit wijzigen.", "error")
+        return redirect(url_for("groups.liquiditeit_page"))
 
     amount = float(request.form["amount"])
 
@@ -332,7 +356,6 @@ def liquiditeit_remove_amount():
         "omschrijving": "Verwijderd via bedrag"
     }).execute()
 
-   
     return redirect(url_for("groups.liquiditeit_page"))
 
 @groups_bp.route("/groups/settings")

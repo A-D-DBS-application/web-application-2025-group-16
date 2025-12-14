@@ -104,11 +104,13 @@
                                 {{ "+" if row.bedrag > 0 else "–" }} € {{ row.bedrag|abs|round(2) }}
                             </span>
 
+                            {% if is_host %}
                             <form method="POST" action="{{ url_for('groups.liquiditeit_delete', log_id=row.id) }}">
                                 <button class="text-rose-600 hover:text-rose-800" title="Verwijder transactie">
                                     <i data-lucide="trash" class="h-4 w-4"></i>
                                 </button>
                             </form>
+                            {% endif %}
                         </div>
 
                     </div>
