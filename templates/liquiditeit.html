@@ -38,6 +38,12 @@
                 Cash wijzigen
             </h2>
 
+            {% if not is_host %}
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                📖 Alleen lezen – alleen de host kan de liquiditeit wijzigen.
+            </div>
+            {% else %}
+
             <!-- Toevoegen -->
             <form method="POST" action="{{ url_for('groups.liquiditeit_add') }}" class="space-y-4">
                 <div>
@@ -68,7 +74,7 @@
                     Bedrag verwijderen
                 </button>
             </form>
-        </div>
+            {% endif %}
 
         <!-- Logboek -->
         <div class="glass-card p-6">

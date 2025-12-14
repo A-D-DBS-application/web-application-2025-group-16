@@ -50,6 +50,10 @@ def _current_group_snapshot():
         "role": mem.get("role") or mem.get("rol")
     }
 
+def _is_host():
+    snap = _current_group_snapshot()
+    return snap and snap.get("role") == "host"
+
 def _list_user_groups():
     uid = session.get("user_id")
     if not uid: return []
@@ -286,7 +290,7 @@ def api_add_portfolio_cost(port_id: int):
 def leden():
     if "user_id" not in session: return redirect(url_for("auth.login"))
     ok, res = list_leden()
-    return render_template("leden.html", leden=res if ok else [])
+    return render_template("leden.html", leden=res if ok else [], is_host=_is_host())
 
 # --- ACTIES (CSV, REFRESH, LOG) ---
 

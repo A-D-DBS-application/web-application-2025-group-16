@@ -16,7 +16,7 @@
 
       <a href="{{ url_for('groups.group_dashboard') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/groups/current') else 'text-slate-600 hover:text-blue-600' }}">Groepsdashboard</a>
 
-      <a href="{{ url_for('auth.logout') }}" class="text-rose-600 hover:text-rose-700">Uitloggen</a>
+      <a href="{{ url_for('auth.logout') }}" class="{{ 'text-blue-600 font-semibold' if p.startswith('/logout') else 'text-slate-600 hover:text-blue-600' }}">Uitloggen</a>
     </div>
   </div>
 </nav>

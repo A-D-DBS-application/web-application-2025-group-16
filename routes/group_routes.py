@@ -10,8 +10,8 @@ from auth import (
     add_member_to_group, get_membership_for_user, get_membership_for_user_in_group,
     list_group_members, count_group_members, list_memberships_for_user, list_groups_by_ids,
     initialize_cash_position, remove_member_from_group, delete_group,
-    create_group_request, list_group_requests_for_group, approve_group_request,
-    update_member_role, list_leden, update_member_role
+    create_group_request, list_group_requests_for_group, approve_group_request, reject_group_request,
+    update_member_role, list_leden
 )
 
 groups_bp = Blueprint('groups', __name__)
@@ -232,6 +232,13 @@ def approve_request(req_id):
     approve_group_request(req_id, session["user_id"])
     return redirect(url_for("groups.group_dashboard"))
 
+@groups_bp.route("/groups/requests/<int:req_id>/reject", methods=["POST"])
+def reject_request(req_id):
+    if not _is_current_user_host(): return redirect(url_for("groups.group_dashboard"))
+    reject_group_request(req_id, session["user_id"])
+    flash("Aanvraag afgewezen.", "info")
+    return redirect(url_for("groups.group_dashboard"))
+
 @groups_bp.route("/groups/leave", methods=["POST"])
 def leave_group():
     if "user_id" in session and session.get("group_id"):
@@ -265,12 +272,14 @@ def liquiditeit_page():
         .execute().data
 
     total_liq = sum(float(r["bedrag"]) for r in liq) if liq else 0
+    is_host = _is_current_user_host()
 
     return render_template(
         'liquiditeit.html',
         group=active_group,
         logs=liq,
-        total_liq=total_liq
+        total_liq=total_liq,
+        is_host=is_host
     )
 
 
@@ -335,13 +344,17 @@ def group_settings():
     if not group:
         return redirect(url_for("main.home"))
 
-    # alleen hosts zien deze pagina
-    if not _is_current_user_host():
-
-        
-        return redirect(url_for("groups.group_dashboard"))
-
-    return render_template("group_settings.html", group=group)
+    is_host = _is_current_user_host()
+    
+    # Calculate exit cost to show liquiditeitskost
+    exit_data = None
+    group_id = group.get("id") or group.get("groep_id")
+    if group_id:
+        ok_out, res_out = calculate_exit_cost(group_id)
+        if ok_out:
+            exit_data = res_out
+    
+    return render_template("group_settings.html", group=group, is_host=is_host, exit_cost=exit_data)
 
 @groups_bp.post("/groups/update_cost_settings")
 def update_cost_settings():

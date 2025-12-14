@@ -1,9 +1,20 @@
 from flask import Blueprint, render_template, request, jsonify, session
 from sqlalchemy import desc
 from models import SessionLocal, Transacties, Portefeuille
-from auth import log_portfolio_transaction, get_membership_for_user_in_group
+from auth import log_portfolio_transaction, get_membership_for_user_in_group, get_group_by_id, get_membership_for_user
 
 transacties_bp = Blueprint("transacties", __name__)
+
+def _is_host():
+    """Helper to determine if current user is host of their active group."""
+    uid = session.get("user_id")
+    gid = session.get("group_id")
+    if not uid or not gid:
+        return False
+    ok, mem = get_membership_for_user_in_group(uid, gid)
+    if not ok or not mem:
+        return False
+    return mem.get("role") == "host"
 
 @transacties_bp.route("/transactions")
 def transactions():
@@ -12,7 +23,7 @@ def transactions():
     - Anders: haal alle `port_id`s van de huidige groep en filter daarop.
     """
     if "user_id" not in session:
-        return render_template("transactions.html", transactions=[])
+        return render_template("transactions.html", transactions=[], is_host=False)
     gid = session.get("group_id")
     q_port = request.args.get("port_id", type=int)
     db = SessionLocal()
@@ -24,7 +35,7 @@ def transactions():
             port_rows = db.query(Portefeuille.port_id).filter(Portefeuille.groep_id == gid).all()
             port_ids = [row.port_id for row in port_rows]
             if not port_ids:
-                return render_template("transactions.html", transactions=[], group_id=gid, port_id=q_port)
+                return render_template("transactions.html", transactions=[], group_id=gid, port_id=q_port, is_host=_is_host())
             tx_query = tx_query.filter(Transacties.portefeuille_id.in_(port_ids))
         txs = (
             tx_query
@@ -35,7 +46,7 @@ def transactions():
         txs = []
     finally:
         db.close()
-    return render_template("transactions.html", transactions=txs, group_id=gid, port_id=q_port)
+    return render_template("transactions.html", transactions=txs, group_id=gid, port_id=q_port, is_host=_is_host())
 
 @transacties_bp.route("/api/transactions/log", methods=["POST"])
 def api_log_transaction():
