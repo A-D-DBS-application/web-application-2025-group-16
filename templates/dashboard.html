@@ -193,7 +193,6 @@
                             <option value="PLN"></option>
                             <option value="DKK"></option>
                         </datalist>
-                        <div id="currency-hint" class="text-[11px] mt-1 text-slate-400">Automatisch gevuld vanuit Yahoo Finance; overschrijf indien nodig (2–6 letters).</div>
                     </div>
                 </div>
 
@@ -207,18 +206,18 @@
 
                 <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label class="form-label">Aantal aandelen</label>
+                        <label class="form-label">Aantal</label>
                         <input id="quantity-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                     <div>
-                        <label class="form-label">Koers (wijzigbaar)</label>
+                        <label class="form-label">Koers</label>
                         <input id="quote-price-input" type="number" step="any" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                 </div>
 
                 <div class="grid md:grid-cols-3 gap-4 mt-2">
                     <div>
-                        <label class="form-label">Bruto totaal (koers × aantal)</label>
+                        <label class="form-label">Bruto totaal</label>
                         <input id="gross-total" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
                     </div>
                     <div id="final-total-wrapper">
@@ -233,7 +232,7 @@
 
                 <div id="currency-extra" class="grid md:grid-cols-3 gap-4 mt-2 hidden">
                     <div>
-                        <label class="form-label">Totaal in euro</label>
+                        <label class="form-label">Totaal (€)</label>
                         <input id="final-total-eur" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
                     <div id="fee-eur-wrapper">
@@ -887,25 +886,28 @@
                 txnPlaceholder?.classList.add('hidden');
                 cashSection?.classList.add('hidden');
                 if (positionSubmitBtn) positionSubmitBtn.disabled = false;
+                if (lookupBtn) lookupBtn.classList.remove('hidden');
                 if (isDividend) {
                     setFormStatus('Dividend: vul ticker en velden in', 'info');
-                    if (lookupBtn) lookupBtn.classList.add('hidden');
                     maybePrefillDividendCurrency();
+                    const prefillSymbol = (tickerInput?.value || '').trim().toUpperCase();
+                    if (prefillSymbol) {
+                        prefillDividendHolding(prefillSymbol);
+                    }
                 } else {
                     const statusMsg = isSell ? 'Verkoop: vul ticker/velden in' : (isPayout ? 'Uitbetaling: vul ticker en aantal in (geen kosten)' : 'Zoek een ticker om details te laden');
                     setFormStatus(statusMsg, 'info');
-                    if (lookupBtn) lookupBtn.classList.remove('hidden');
                     if (tickerInput && tickerInput.value === 'CASH') tickerInput.value = '';
                 }
                 const costLabel = document.getElementById('cost-label');
                 const totalLabel = document.getElementById('total-label');
                 if (costLabel) {
                     const text = isPayout
-                        ? 'Kosten (niet van toepassing)'
-                        : (isSell ? 'Kosten in beursvaluta (Bruto − netto)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten in beursvaluta'));
+                        ? 'Kosten niet van toepassing'
+                        : 'Kosten in beursvaluta';
                     costLabel.textContent = text;
                 }
-                if (totalLabel) totalLabel.textContent = (isSell || isPayout) ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
+                if (totalLabel) totalLabel.textContent = 'Totaal in beursvaluta';
                 if (finalTotalInput) {
                     finalTotalInput.readOnly = isPayout;
                     finalTotalInput.classList.toggle('bg-slate-100', isPayout);
@@ -924,7 +926,7 @@
                     feeEurInput.value = '0.00';
                 }
                 try {
-                    const sectorContainer = quoteSectorEl ? quoteSectorEl.closest('div') : null;
+                    const sectorContainer = quoteSectorEl ? quoteSectorEl.parentElement : null;
                     if (sectorContainer) sectorContainer.classList.toggle('hidden', isDividend);
                 } catch {}
                 try { updateTotals(); } catch {}
@@ -961,6 +963,26 @@
             if (!isKas && cashTransferDescription) cashTransferDescription.value = '';
         }
 
+        function findCurrentHolding(symbol) {
+            if (!symbol || !Array.isArray(currentPortfolio)) return null;
+            const upper = symbol.toUpperCase();
+            return currentPortfolio.find(row => String(row?.ticker || '').toUpperCase() === upper) || null;
+        }
+
+        function prefillDividendHolding(symbol) {
+            if ((txnTypeSelect?.value || 'BUY').toUpperCase() !== 'DIVIDEND') return;
+            const holding = findCurrentHolding(symbol);
+            if (!holding) return;
+            const qtyValue = Number(holding.quantity) || 0;
+            if (quantityInput && qtyValue > 0) {
+                quantityInput.value = qtyValue;
+                try { updateTotals(); } catch {}
+            }
+            if (!currencyInput || currencyInput.value) return;
+            const cur = String(holding.munt || holding.currency || '').toUpperCase();
+            if (cur) currencyInput.value = cur;
+        }
+
         async function maybePrefillDividendCurrency() {
             const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
             if (t !== 'DIVIDEND') return;
@@ -981,6 +1003,7 @@
                     if (wkOutput && wk) wkOutput.value = String(wk);
                     try { updateTotals(); } catch {}
                 }
+                prefillDividendHolding(sym);
             } catch {}
         }
 
@@ -1405,6 +1428,11 @@
                 const quote = await fetchQuote(symbol);
                 lastQuote = quote;
                 updateQuoteSummary(quote);
+                const txType = (txnTypeSelect?.value || 'BUY').toUpperCase();
+                if (txType === 'DIVIDEND') {
+                    if (quotePriceInput) quotePriceInput.value = '';
+                    prefillDividendHolding(symbol);
+                }
                 setFormStatus('Quote geladen. Vul aantallen in en sla op.', 'success');
             } catch (err) {
                 clearQuoteSummary();
@@ -1461,7 +1489,7 @@
                 } else if (t === 'SELL' || t === 'PAYOUT') {
                     transactionCost = (qty * tradePrice) - finalProvided;
                 } else {
-                    // DIVIDEND: geen kostenvergelijking; laat afwijking ongemoeid
+                    // DIVIDEND: geen kostenvergelijking; laat kostenveld ongemoeid
                 }
             }
             let selectedCurrency = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
@@ -1546,7 +1574,7 @@
                     setFormStatus('Ongeldige wisselkoers of totaalbedrag.', 'error');
                     return;
                 }
-                // Koers afleiden uit het totaal zodat Waarde(€) precies gelijk is aan Totaal in euro
+                // Koers afleiden uit het totaal zodat Waarde(€) gelijk blijft aan Totaal (€)
                 if (qty > 0) {
                     const localTotal = isEur ? totalEur : (wkVal > 0 ? (totalEur * wkVal) : 0);
                     tradePrice = (localTotal / qty);
