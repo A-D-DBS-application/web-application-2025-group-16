@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, session
-from config import supabase
+from sqlalchemy import desc
+from models import SessionLocal, Transacties, Portefeuille
 from auth import log_portfolio_transaction, get_membership_for_user_in_group
 
 transacties_bp = Blueprint("transacties", __name__)
@@ -13,23 +14,28 @@ def transactions():
     if "user_id" not in session:
         return render_template("transactions.html", transactions=[])
     gid = session.get("group_id")
-    q_port = request.args.get("port_id")
-    query = supabase.table("Transacties").select("*").order("datum_tr", desc=True)
+    q_port = request.args.get("port_id", type=int)
+    db = SessionLocal()
     try:
+        tx_query = db.query(Transacties)
         if q_port:
-            query = query.eq("portefeuille_id", q_port)
+            tx_query = tx_query.filter(Transacties.portefeuille_id == q_port)
         else:
-            ports = supabase.table("Portefeuille").select("port_id").eq("groep_id", gid).execute()
-            p_ids = [r.get("port_id") for r in (ports.data or []) if r.get("port_id") is not None]
-            if p_ids:
-                query = query.in_("portefeuille_id", p_ids)
-            else:
-                return render_template("transactions.html", transactions=[])
-        res = query.execute()
-        txs = res.data or []
+            port_rows = db.query(Portefeuille.port_id).filter(Portefeuille.groep_id == gid).all()
+            port_ids = [row.port_id for row in port_rows]
+            if not port_ids:
+                return render_template("transactions.html", transactions=[], group_id=gid, port_id=q_port)
+            tx_query = tx_query.filter(Transacties.portefeuille_id.in_(port_ids))
+        txs = (
+            tx_query
+            .order_by(desc(Transacties.datum_tr), desc(Transacties.transactie_id))
+            .all()
+        )
     except Exception:
         txs = []
-    return render_template("transactions.html", transactions=txs)
+    finally:
+        db.close()
+    return render_template("transactions.html", transactions=txs, group_id=gid, port_id=q_port)
 
 @transacties_bp.route("/api/transactions/log", methods=["POST"])
 def api_log_transaction():
@@ -64,134 +70,81 @@ def api_realized_profit(group_id: int):
     if not (ok and mem):
         return jsonify({"error": "Geen toegang tot deze groep"}), 403
 
+    db = SessionLocal()
     try:
-        ports = supabase.table("Portefeuille").select("port_id").eq("groep_id", group_id).execute()
-        p_ids = [r.get("port_id") for r in (ports.data or []) if r.get("port_id") is not None]
+        # Verzamel relevante portefeuilles
+        q_port = request.args.get("port_id", type=int)
+        base_query = db.query(Portefeuille.port_id).filter(Portefeuille.groep_id == group_id)
+        all_port_ids = [row.port_id for row in base_query.all()]
+        if q_port and q_port in all_port_ids:
+            target_port_ids = [q_port]
+        else:
+            target_port_ids = all_port_ids
 
-        try:
-            # Optionele filter: enkel voor een specifieke portefeuille
-            q_port = request.args.get("port_id")
+        sell_count = 0
+        overall_realized = 0.0
+        per_port_result = {}
 
-            ports = supabase.table("Portefeuille").select("port_id").eq("groep_id", group_id).execute()
-            all_port_ids = [r.get("port_id") for r in (ports.data or []) if r.get("port_id") is not None]
-            if q_port:
+        if target_port_ids:
+            tx_rows = (
+                db.query(Transacties)
+                .filter(Transacties.portefeuille_id.in_(target_port_ids))
+                .filter(Transacties.type.in_(["BUY", "SELL", "PAYOUT", "FEE", "KOST", "DIVIDEND"]))
+                .order_by(Transacties.datum_tr, Transacties.transactie_id)
+                .all()
+            )
+
+            state = {}
+            for row in tx_rows:
                 try:
-                    q_port = int(q_port)
+                    pid = row.portefeuille_id
+                    if pid is None:
+                        continue
+                    ttype = (row.type or "").upper()
+                    ticker = (row.ticker or "").upper()
+                    if ticker == "CASH":
+                        continue
+                    qty = float(row.aantal or 0)
+                    price = float(row.koers or 0)
+                    wk = float(row.wisselkoers or 0) or 1.0
+                    if wk <= 0:
+                        wk = 1.0
+                    price_eur = price / wk
+
+                    per_port_result.setdefault(pid, {"total": 0.0, "sell_count": 0})
+                    state.setdefault(pid, {})
+                    state[pid].setdefault(ticker, {"qty": 0.0, "avg_eur": 0.0})
+                    st = state[pid][ticker]
+
+                    if ttype == "BUY" and qty > 0:
+                        new_qty = st["qty"] + qty
+                        prev_weighted = st["avg_eur"] * st["qty"]
+                        new_weighted = prev_weighted + (qty * price_eur)
+                        st["avg_eur"] = (new_weighted / new_qty) if new_qty > 0 else 0.0
+                        st["qty"] = new_qty
+                    elif ttype in ("SELL", "PAYOUT") and qty > 0:
+                        realized = qty * (price_eur - st["avg_eur"])
+                        overall_realized += realized
+                        per_port_result[pid]["total"] += realized
+                        per_port_result[pid]["sell_count"] += 1
+                        sell_count += 1
+                        st["qty"] = max(0.0, st["qty"] - qty)
+                    elif ttype == "DIVIDEND" and qty > 0:
+                        realized_div = qty * price_eur
+                        overall_realized += realized_div
+                        per_port_result[pid]["total"] += realized_div
+                    elif ttype in ("FEE", "KOST") and price:
+                        overall_realized -= price_eur
+                        per_port_result[pid]["total"] -= price_eur
                 except Exception:
-                    q_port = None
+                    continue
 
-            target_port_ids = [q_port] if (q_port and q_port in all_port_ids) else all_port_ids
-
-            sell_count = 0
-            overall_realized = 0.0
-            per_port_result = {}
-
-            if target_port_ids:
-                res_all = (
-                    supabase
-                    .table("Transacties")
-                    .select("aantal, koers, type, ticker, wisselkoers, datum_tr, portefeuille_id")
-                    .in_("portefeuille_id", target_port_ids)
-                    .in_("type", ["BUY", "SELL", "PAYOUT", "FEE", "KOST", "DIVIDEND"])  # relevante types incl. dividend
-                    .order("datum_tr")
-                    .execute()
-                )
-
-                # Per portefeuille en ticker: track gemiddelde aankoopprijs (EUR) en hoeveelheid
-                state = {}
-
-                for row in (res_all.data or []):
-                    try:
-                        pid = row.get("portefeuille_id")
-                        if pid is None:
-                            continue
-                        ttype = (row.get("type") or "").upper()
-                        ticker = (row.get("ticker") or "").upper()
-                        if ticker == 'CASH':
-                            # Cash transfers niet meenemen in winstberekening
-                            continue
-                        qty = float(row.get("aantal") or 0)
-                        price = float(row.get("koers") or 0)
-                        wk = float(row.get("wisselkoers") or 0) or 1.0
-                        if wk <= 0:
-                            wk = 1.0
-                        price_eur = price / wk
-
-                        # init maps
-                        per_port_result.setdefault(pid, {"total": 0.0, "sell_count": 0})
-                        state.setdefault(pid, {})
-                        state[pid].setdefault(ticker, {"qty": 0.0, "avg_eur": 0.0, "last_action": None})
-                        st = state[pid][ticker]
-
-                        if ttype == "BUY" and qty > 0:
-                            # Update gemiddelde aankoopprijs in EUR
-                            new_qty = st["qty"] + qty
-                            prev_weighted = st["avg_eur"] * st["qty"]
-                            new_weighted = prev_weighted + (qty * price_eur)
-                            st["avg_eur"] = (new_weighted / new_qty) if new_qty > 0 else 0.0
-                            st["qty"] = new_qty
-                            st["last_action"] = "BUY"
-                        elif ttype in ("SELL", "PAYOUT") and qty > 0:
-                            # Realized = qty × (sell_price_eur − avg_buy_eur)
-                            realized = qty * (price_eur - st["avg_eur"])
-                            overall_realized += realized
-                            per_port_result[pid]["total"] += realized
-                            per_port_result[pid]["sell_count"] += 1
-                            sell_count += 1
-                            # Verminder positie hoeveelheid
-                            st["qty"] = max(0.0, st["qty"] - qty)
-                            st["last_action"] = "SELL"
-                        elif ttype == "DIVIDEND" and qty > 0:
-                            realized_div = qty * price_eur
-                            overall_realized += realized_div
-                            per_port_result[pid]["total"] += realized_div
-                        elif ttype in ("FEE", "KOST") and price:
-                            # Altijd kosten in mindering brengen, ongeacht laatste actie
-                            overall_realized -= price_eur
-                            per_port_result[pid]["total"] -= price_eur
-                    except Exception:
-                        pass
-
-                # Fallback: als er nog steeds 0 uitkomt (bijv. door een onverwachte parsing-issue),
-                # sommeer DIVIDEND direct per portefeuille om de kaart niet leeg te laten.
-                # Dit dekt jouw voorbeeld waarin enkel dividenden aanwezig zijn.
-                if abs(overall_realized) < 1e-9:
-                    try:
-                        div_q = (
-                            supabase
-                            .table("Transacties")
-                            .select("aantal, koers, wisselkoers, portefeuille_id")
-                            .in_("portefeuille_id", target_port_ids)
-                            .eq("type", "DIVIDEND")
-                            .execute()
-                        )
-                        for r in (div_q.data or []):
-                            try:
-                                pid2 = r.get("portefeuille_id")
-                                if pid2 is None:
-                                    continue
-                                qty2 = float(r.get("aantal") or 0)
-                                price2 = float(r.get("koers") or 0)
-                                wk2 = float(r.get("wisselkoers") or 0) or 1.0
-                                if wk2 <= 0:
-                                    wk2 = 1.0
-                                val_eur = qty2 * (price2 / wk2)
-                                if val_eur:
-                                    per_port_result.setdefault(pid2, {"total": 0.0, "sell_count": 0})
-                                    per_port_result[pid2]["total"] += val_eur
-                                    overall_realized += val_eur
-                            except Exception:
-                                pass
-                        # sell_count blijft 0; dat is correct bij enkel dividenden
-                    except Exception:
-                        pass
-
-            return jsonify({
-                "total": overall_realized,
-                "sell_count": sell_count,
-                "per_port": per_port_result
-            })
-        except Exception:
-            return jsonify({"total": 0.0, "sell_count": 0, "per_port": {}})
+        return jsonify({
+            "total": overall_realized,
+            "sell_count": sell_count,
+            "per_port": per_port_result
+        })
     except Exception:
-        return jsonify({"error": "Fout bij ophalen gegevens"}), 500 
+        return jsonify({"error": "Fout bij ophalen gegevens"}), 500
+    finally:
+        db.close()

@@ -1,4 +1,5 @@
 import logging
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 from models import SessionLocal, Leden, Groep, GroepLeden, Portefeuille, Transacties, Kas, GroepAanvragen
 from market_data import get_latest_price, get_currency_rate
@@ -28,39 +29,41 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
         if not portfolio_id and not ticker:
             return False, "Portfolio ID of ticker vereist"
         
-        # Normaliseer of vul datum_tr in (fallback: vandaag 00:00:00Z)
-        dt_value = None
-        try:
-            s = (datum_tr or "").strip()
-            if not s:
-                from datetime import date
-                s = date.today().isoformat()  # YYYY-MM-DD
-            if len(s) == 10 and s[4] == '-' and s[7] == '-':
-                dt_value = s + "T00:00:00Z"
-            else:
-                dt_value = s
-        except Exception:
-            dt_value = None
+        raw_date = (datum_tr or "").strip()
+        dt_value = date.today()
+        if raw_date:
+            try:
+                if len(raw_date) == 10 and raw_date[4] == '-' and raw_date[7] == '-':
+                    dt_value = datetime.strptime(raw_date, "%Y-%m-%d").date()
+                else:
+                    dt_value = datetime.fromisoformat(raw_date.replace('Z', '')).date()
+            except Exception:
+                dt_value = date.today()
 
         session = SessionLocal()
-        new_tx = Transacties(
-            aantal=amount,
-            ticker=ticker,
-            type=trade_type.upper(),
-            portefeuille_id=portfolio_id,
-            koers=price,
-            wisselkoers=exchange_rate,
-            munt=currency,
-            datum_tr=dt_value,
-        )
-        session.add(new_tx)
-        session.commit()
-        session.close()
-        return True, {
-            "id": new_tx.id,
-            "aantal": new_tx.aantal,
-            "ticker": new_tx.ticker,
-        }
+        try:
+            new_tx = Transacties(
+                aantal=amount,
+                ticker=ticker,
+                type=trade_type.upper(),
+                portefeuille_id=portfolio_id,
+                koers=price,
+                wisselkoers=exchange_rate,
+                munt=currency,
+                datum_tr=dt_value,
+            )
+            session.add(new_tx)
+            session.commit()
+            session.refresh(new_tx)
+            result = {
+                "transactie_id": new_tx.transactie_id,
+                "aantal": new_tx.aantal,
+                "ticker": new_tx.ticker,
+                "type": new_tx.type,
+            }
+            return True, result
+        finally:
+            session.close()
     except Exception as e:
         logging.error(f"Transactie log fout: {e}")
         return False, str(e)
@@ -617,7 +620,7 @@ def koersen_updater(group_id):
             # Munt bepalen op basis van laatste transactie
             currency = None
             try:
-                tx = session.query(Transacties).filter(Transacties.ticker == ticker).order_by(Transacties.id.desc()).first()
+                tx = session.query(Transacties).filter(Transacties.ticker == ticker).order_by(Transacties.transactie_id.desc()).first()
                 if tx:
                     currency = (tx.munt or "").upper() or None
             except Exception:

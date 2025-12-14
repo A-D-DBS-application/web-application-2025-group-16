@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
+    create_engine, Column, Integer, String, Float, DateTime, Date, ForeignKey, Text
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 import os
@@ -61,28 +61,27 @@ class GroepLeden(Base):
 class Portefeuille(Base):
     __tablename__ = "Portefeuille"
     port_id = Column(Integer, primary_key=True, autoincrement=True)
-    groep_id = Column(Integer, ForeignKey("Groep.groep_id"))
-    ticker = Column(String, index=True)
+    ticker = Column(String)
     name = Column(String)
     sector = Column(String)
-    quantity = Column(Integer, default=0)
+    quantity = Column(Float, default=0.0)
     avg_price = Column(Float, default=0.0)
     current_price = Column(Float, default=0.0)
+    groep_id = Column(Integer, ForeignKey("Groep.groep_id"), nullable=False)
     transactiekost = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Transacties(Base):
     __tablename__ = "Transacties"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    aantal = Column(Float)
-    ticker = Column(String)
-    type = Column(String)
+    transactie_id = Column(Integer, primary_key=True, autoincrement=True)
+    datum_tr = Column(Date, nullable=False)
+    type = Column(String, nullable=False)
+    ticker = Column(String, nullable=False)
+    aantal = Column(Float, nullable=False)
+    koers = Column(Float, nullable=False)
+    wisselkoers = Column(Float, nullable=False, default=1.0)
+    munt = Column(String, nullable=False, default="EUR")
     portefeuille_id = Column(Integer, ForeignKey("Portefeuille.port_id"))
-    koers = Column(Float)
-    wisselkoers = Column(Float)
-    munt = Column(String)
-    datum_tr = Column(String)
 
 
 class Kas(Base):

@@ -164,19 +164,19 @@
                         </div>
                     </div>
                     <div>
-                        <label class="form-label">Aantal aandelen</label>
-                        <input id="quantity-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
+                        <label class="form-label">Naam</label>
+                        <div id="quote-name" class="quote-pill">—</div>
                     </div>
                 </div>
 
                 <div class="grid md:grid-cols-3 gap-4 mt-6">
                     <div>
-                        <label class="form-label">Koers (wijzigbaar)</label>
-                        <input id="quote-price-input" type="number" step="any" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
-                    </div>
-                    <div>
                         <label class="form-label">Sector</label>
                         <div id="quote-sector" class="quote-pill">—</div>
+                    </div>
+                    <div>
+                        <label class="form-label">Status</label>
+                        <div id="form-status" class="quote-pill text-slate-400">{{ 'Selecteer eerst een groep' if not active_group else 'Zoek een ticker om details te laden' }}</div>
                     </div>
                     <div>
                         <label class="form-label">Beursvaluta</label>
@@ -205,14 +205,14 @@
                     </div>
                 </div>
 
-                <div class="grid md:grid-cols-3 gap-4">
+                <div class="grid md:grid-cols-2 gap-4">
                     <div>
-                        <label class="form-label">Naam</label>
-                        <div id="quote-name" class="quote-pill">—</div>
+                        <label class="form-label">Aantal aandelen</label>
+                        <input id="quantity-input" type="number" step="0.01" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                     <div>
-                        <label class="form-label">Status</label>
-                        <div id="form-status" class="quote-pill text-slate-400">{{ 'Selecteer eerst een groep' if not active_group else 'Zoek een ticker om details te laden' }}</div>
+                        <label class="form-label">Koers (wijzigbaar)</label>
+                        <input id="quote-price-input" type="number" step="any" min="0" class="form-input" placeholder="0" {{ builder_disabled }}>
                     </div>
                 </div>
 
@@ -226,16 +226,8 @@
                         <input id="final-total" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
                     </div>
                     <div id="derived-cost-wrapper">
-                        <label id="cost-label" class="form-label">Kosten</label>
+                        <label id="cost-label" class="form-label">Kosten in beursvaluta</label>
                         <input id="derived-cost" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
-                    </div>
-                </div>
-
-                <div id="fee-eur-wrapper" class="grid md:grid-cols-3 gap-4 mt-2">
-                    <div>
-                        <label class="form-label">Kosten (€)</label>
-                        <input id="fee-eur" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
-                        <div class="text-[11px] mt-1 text-slate-400">Afgeleid: kosten in beursvaluta omgezet naar EUR via WK.</div>
                     </div>
                 </div>
 
@@ -243,6 +235,11 @@
                     <div>
                         <label class="form-label">Totaal in euro</label>
                         <input id="final-total-eur" type="number" step="0.01" min="0" class="form-input" placeholder="€ 0,00" {{ builder_disabled }}>
+                    </div>
+                    <div id="fee-eur-wrapper">
+                        <label class="form-label">Kosten (€)</label>
+                        <input id="fee-eur" type="number" step="0.01" class="form-input" placeholder="€ 0,00" readonly>
+                        <div class="text-[11px] mt-1 text-slate-400">Afgeleid: kosten in beursvaluta omgezet naar EUR via WK.</div>
                     </div>
                     <div>
                         <label class="form-label">WK</label>
@@ -645,6 +642,8 @@
             const extra = document.getElementById('currency-extra');
             const eurInput = document.getElementById('final-total-eur');
             const wkOutput = document.getElementById('wk-output');
+            const showFeeEur = cur !== 'EUR';
+            if (feeEurWrapper) feeEurWrapper.classList.toggle('hidden', isPayout || !showFeeEur);
             const showExtra = cur !== 'EUR';
             if (extra) extra.classList.toggle('hidden', !showExtra);
             if (showExtra && eurInput && wkOutput) {
@@ -903,7 +902,7 @@
                 if (costLabel) {
                     const text = isPayout
                         ? 'Kosten (niet van toepassing)'
-                        : (isSell ? 'Kosten (Bruto − netto)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten'));
+                        : (isSell ? 'Kosten in beursvaluta (Bruto − netto)' : (isDividend ? 'Afwijking (optioneel)' : 'Kosten in beursvaluta'));
                     costLabel.textContent = text;
                 }
                 if (totalLabel) totalLabel.textContent = (isSell || isPayout) ? 'Totaal (netto) in beursvaluta' : 'Totaal in beursvaluta';
@@ -1379,6 +1378,7 @@
                 } else if (!currencyInput.value) {
                     currencyInput.value = 'EUR';
                 }
+                try { updateTotals(); } catch {}
             }
         }
 
