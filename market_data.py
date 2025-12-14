@@ -2,6 +2,7 @@
 import os
 import requests
 import logging
+from models import SessionLocal, Wisselkoersen
 
 
 # Probeer yfinance te laden (faalt soms op nieuwere Python versies)
@@ -140,34 +141,40 @@ def get_currency_rate(currency: str):
     except:
         return None
 
-def sync_exchange_rates_to_db(supabase_client, currencies: list):
+def sync_exchange_rates_to_db(supabase_client=None, currencies: list = None):
     """
-    Update de tabel 'Wisselkoersen' in Supabase voor de opgegeven lijst munten.
+    Update de tabel 'Wisselkoersen' met actuele wisselkoersen.
+    Supabase_client parameter is nu genegeerd (gebruikt SQLAlchemy).
     Geeft het aantal geüpdatete rijen terug.
     """
+    if currencies is None:
+        currencies = []
+    
     updated_count = 0
     
     # Filter onzin en dubbele eruit
     unique_currencies = set([str(c).upper() for c in currencies if c and str(c).upper() != 'EUR'])
+    
+    session = SessionLocal()
     
     for code in unique_currencies:
         rate = get_currency_rate(code)
         
         if rate:
             try:
-                # Upsert: Update als bestaat, anders insert (als je tabel constraints goed staan)
-                # Anders gebruiken we update().eq() zoals in je oude code
+                # Probeer bestaande record te vinden
+                existing = session.query(Wisselkoersen).filter(Wisselkoersen.munt == code).first()
                 
-                # Check eerst of hij bestaat (voor veiligheid)
-                existing = supabase_client.table('Wisselkoersen').select('munt').eq('munt', code).execute()
-                
-                if existing.data:
-                    supabase_client.table('Wisselkoersen').update({'wk': rate}).eq('munt', code).execute()
+                if existing:
+                    existing.wk = rate
                 else:
-                    supabase_client.table('Wisselkoersen').insert({'munt': code, 'wk': rate}).execute()
-                    
+                    new_rate = Wisselkoersen(munt=code, wk=rate)
+                    session.add(new_rate)
+                
+                session.commit()
                 updated_count += 1
             except Exception as e:
                 logger.error(f"DB fout bij updaten wisselkoers {code}: {e}")
-                
+    
+    session.close()
     return updated_count

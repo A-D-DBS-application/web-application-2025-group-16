@@ -1,9 +1,10 @@
 import logging
-from config import supabase, supabase_admin  # gebruik admin client als beschikbaar
+from sqlalchemy.orm import Session
+from models import SessionLocal, Leden, Groep, GroepLeden, Portefeuille, Transacties, Kas, GroepAanvragen
 from market_data import get_latest_price, get_currency_rate
 
 # --- CONFIGURATIE ---
-# (De keys en URL zijn hier weggehaald omdat ze nu uit config.py komen)
+# (Supabase client vervangen door SQLAlchemy SessionLocal)
 
 GROUP_TABLE = "Groep"
 GROUP_MEMBER_TABLE = "groep_leden"
@@ -41,22 +42,25 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
         except Exception:
             dt_value = None
 
-        payload = {
-            "aantal": amount,
-            "ticker": ticker,
-            "type": trade_type.upper(),
-            "portefeuille_id": portfolio_id,
-            "koers": price,
-            "wisselkoers": exchange_rate,
-            "munt": currency
+        session = SessionLocal()
+        new_tx = Transacties(
+            aantal=amount,
+            ticker=ticker,
+            type=trade_type.upper(),
+            portefeuille_id=portfolio_id,
+            koers=price,
+            wisselkoers=exchange_rate,
+            munt=currency,
+            datum_tr=dt_value,
+        )
+        session.add(new_tx)
+        session.commit()
+        session.close()
+        return True, {
+            "id": new_tx.id,
+            "aantal": new_tx.aantal,
+            "ticker": new_tx.ticker,
         }
-        # Datum altijd meesturen om NOT NULL te vermijden
-        if dt_value:
-            payload["datum_tr"] = dt_value
-        response = supabase.table(TRANSACTION_TABLE).insert(payload).execute()
-        if response.data:
-            return True, response.data[0]
-        return False, "Insert mislukt"
     except Exception as e:
         logging.error(f"Transactie log fout: {e}")
         return False, str(e)
@@ -76,9 +80,18 @@ def _build_cash_payload(group_id, amount):
 
 def sign_in_user(email):
     try:
-        response = supabase.table('Leden').select("*").eq('email', email).execute()
-        if response.data and len(response.data) > 0:
-            return True, response.data[0]
+        session = SessionLocal()
+        user = session.query(Leden).filter(Leden.email == email).first()
+        session.close()
+        if user:
+            return True, {
+                "ledenid": user.ledenid,
+                "email": user.email,
+                "voornaam": user.voornaam,
+                "achternaam": user.achternaam,
+                "GSM": user.GSM,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            }
         else:
             return False, "Geen gebruiker gevonden met dit e-mailadres."
     except Exception as e:
@@ -86,25 +99,42 @@ def sign_in_user(email):
 
 def sign_up_user(email, voornaam, achternaam, gsm):
     try:
-        check = supabase.table('Leden').select("*").eq('email', email).execute()
-        if check.data and len(check.data) > 0:
+        session = SessionLocal()
+        check = session.query(Leden).filter(Leden.email == email).first()
+        if check:
+            session.close()
             return False, "Dit e-mailadres is al in gebruik."
 
-        new_user = {
-            "email": email,
-            "voornaam": voornaam,
-            "achternaam": achternaam,
-            "GSM": gsm
-        }
-        response = supabase.table('Leden').insert(new_user).execute()
+        new_user = Leden(
+            email=email,
+            voornaam=voornaam,
+            achternaam=achternaam,
+            GSM=gsm
+        )
+        session.add(new_user)
+        session.commit()
+        session.close()
         return True, "Gebruiker succesvol aangemaakt."
     except Exception as e:
+        session.close()
         return False, str(e)
 
 def list_leden():
     try:
-        response = supabase.table('Leden').select("*").execute()
-        return True, response.data
+        session = SessionLocal()
+        users = session.query(Leden).all()
+        session.close()
+        result = [
+            {
+                "ledenid": u.ledenid,
+                "email": u.email,
+                "voornaam": u.voornaam,
+                "achternaam": u.achternaam,
+                "GSM": u.GSM,
+            }
+            for u in users
+        ]
+        return True, result
     except Exception as e:
         return False, str(e)
 
@@ -130,112 +160,185 @@ def _normalize_membership_row(row):
 
 def create_group_record(owner_id, name, description, invite_code):
     try:
-        payload = {
-            GROUP_NAME_COLUMN: name,
-            GROUP_DESCRIPTION_COLUMN: description,
-            GROUP_CODE_COLUMN: invite_code,
-            GROUP_OWNER_COLUMN: owner_id,
-        }
-        response = supabase.table(GROUP_TABLE).insert(payload).execute()
-        if not response.data: return False, "Kon de groep niet opslaan."
-        return True, _normalize_group_row(response.data[0])
+        session = SessionLocal()
+        new_group = Groep(
+            groep_naam=name,
+            omschrijving=description,
+            invite_code=invite_code,
+            owner_lid_id=owner_id,
+        )
+        session.add(new_group)
+        session.commit()
+        group_id = new_group.groep_id
+        session.close()
+        return True, _normalize_group_row({
+            "groep_id": new_group.groep_id,
+            "groep_naam": new_group.groep_naam,
+            "omschrijving": new_group.omschrijving,
+            "invite_code": new_group.invite_code,
+            "owner_lid_id": new_group.owner_lid_id,
+            "created_at": new_group.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def get_group_by_code(invite_code):
     try:
-        response = supabase.table(GROUP_TABLE).select("*").eq(GROUP_CODE_COLUMN, invite_code).limit(1).execute()
-        if not response.data: return True, None
-        return True, _normalize_group_row(response.data[0])
+        session = SessionLocal()
+        group = session.query(Groep).filter(Groep.invite_code == invite_code).first()
+        session.close()
+        if not group:
+            return True, None
+        return True, _normalize_group_row({
+            "groep_id": group.groep_id,
+            "groep_naam": group.groep_naam,
+            "omschrijving": group.omschrijving,
+            "invite_code": group.invite_code,
+            "owner_lid_id": group.owner_lid_id,
+            "created_at": group.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def get_group_by_id(group_id):
     try:
-        response = supabase.table(GROUP_TABLE).select("*").eq(GROUP_ID_COLUMN, group_id).limit(1).execute()
-        if not response.data: return True, None
-        return True, _normalize_group_row(response.data[0])
+        session = SessionLocal()
+        group = session.query(Groep).filter(Groep.groep_id == group_id).first()
+        session.close()
+        if not group:
+            return True, None
+        return True, _normalize_group_row({
+            "groep_id": group.groep_id,
+            "groep_naam": group.groep_naam,
+            "omschrijving": group.omschrijving,
+            "invite_code": group.invite_code,
+            "owner_lid_id": group.owner_lid_id,
+            "created_at": group.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def group_code_exists(invite_code):
     try:
-        response = supabase.table(GROUP_TABLE).select(GROUP_CODE_COLUMN).eq(GROUP_CODE_COLUMN, invite_code).limit(1).execute()
-        return True, bool(response.data)
+        session = SessionLocal()
+        exists = session.query(Groep).filter(Groep.invite_code == invite_code).first() is not None
+        session.close()
+        return True, exists
     except Exception as e:
         return False, str(e)
 
 def get_membership_for_user(ledenid):
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).select("*").eq("ledenid", ledenid).limit(1).execute()
-        if not response.data: return True, None
-        return True, _normalize_membership_row(response.data[0])
+        session = SessionLocal()
+        membership = session.query(GroepLeden).filter(GroepLeden.ledenid == ledenid).first()
+        session.close()
+        if not membership:
+            return True, None
+        return True, _normalize_membership_row({
+            "groep_id": membership.groep_id,
+            "ledenid": membership.ledenid,
+            "rol": membership.rol,
+            "created_at": membership.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def get_membership_for_user_in_group(ledenid, group_id):
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).select("*").eq("ledenid", ledenid).eq(GROUP_ID_COLUMN, group_id).limit(1).execute()
-        if not response.data: return True, None
-        return True, _normalize_membership_row(response.data[0])
+        session = SessionLocal()
+        membership = session.query(GroepLeden).filter(
+            GroepLeden.ledenid == ledenid,
+            GroepLeden.groep_id == group_id
+        ).first()
+        session.close()
+        if not membership:
+            return True, None
+        return True, _normalize_membership_row({
+            "groep_id": membership.groep_id,
+            "ledenid": membership.ledenid,
+            "rol": membership.rol,
+            "created_at": membership.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def add_member_to_group(group_id, ledenid, role="member"):
     try:
-        payload = {
-            GROUP_ID_COLUMN: group_id,
-            "ledenid": ledenid,
-            GROUP_ROLE_COLUMN: role,
-        }
-        response = supabase.table(GROUP_MEMBER_TABLE).insert(payload).execute()
-        if not response.data: return False, "Kon het lid niet toevoegen."
-        return True, _normalize_membership_row(response.data[0])
+        session = SessionLocal()
+        new_membership = GroepLeden(
+            groep_id=group_id,
+            ledenid=ledenid,
+            rol=role,
+        )
+        session.add(new_membership)
+        session.commit()
+        session.close()
+        return True, _normalize_membership_row({
+            "groep_id": new_membership.groep_id,
+            "ledenid": new_membership.ledenid,
+            "rol": new_membership.rol,
+            "created_at": new_membership.created_at,
+        })
     except Exception as e:
         return False, str(e)
 
 def create_group_request(group_id, ledenid, type):
     try:
-        payload = {
-            "groep_id": group_id,
-            "ledenid": ledenid,
-            "type": type,
-            "status": "pending"
-        }
-        res = supabase.table("groepsaanvragen").insert(payload).execute()
+        session = SessionLocal()
+        new_req = GroepAanvragen(
+            groep_id=group_id,
+            ledenid=ledenid,
+            type=type,
+            status="pending",
+        )
+        session.add(new_req)
+        session.commit()
+        session.close()
         return True, "Aanvraag verstuurd"
     except Exception as e:
         return False, str(e)
 
 def list_group_requests_for_group(group_id):
     try:
-        res = supabase.table("groepsaanvragen").select("*").eq("groep_id", group_id).eq("status", "pending").execute()
-        return True, res.data
+        session = SessionLocal()
+        requests = session.query(GroepAanvragen).filter(
+            GroepAanvragen.groep_id == group_id,
+            GroepAanvragen.status == "pending"
+        ).all()
+        session.close()
+        result = [
+            {
+                "id": r.id,
+                "groep_id": r.groep_id,
+                "ledenid": r.ledenid,
+                "type": r.type,
+                "status": r.status,
+            }
+            for r in requests
+        ]
+        return True, result
     except Exception as e:
         return False, str(e)
 
 def approve_group_request(req_id, host_id):
     try:
-        # aanvraag ophalen
-        res = supabase.table("groepsaanvragen").select("*").eq("id", req_id).limit(1).execute()
-        if not res.data:
+        session = SessionLocal()
+        req = session.query(GroepAanvragen).filter(GroepAanvragen.id == req_id).first()
+        if not req:
+            session.close()
             return False, "Aanvraag niet gevonden"
 
-        r = res.data[0]
-
         # type logica
-        if r["type"] == "join":
-            add_member_to_group(r["groep_id"], r["ledenid"], "member")
-
-        elif r["type"] == "leave":
-            remove_member_from_group(r["groep_id"], r["ledenid"])
+        if req.type == "join":
+            add_member_to_group(req.groep_id, req.ledenid, "member")
+        elif req.type == "leave":
+            remove_member_from_group(req.groep_id, req.ledenid)
 
         # aanvraag markeren als afgehandeld
-        supabase.table("groepsaanvragen").update({
-            "status": "approved",
-            "processed_by": host_id
-        }).eq("id", req_id).execute()
-
+        req.status = "approved"
+        req.processed_by = host_id
+        session.commit()
+        session.close()
         return True, "Goedgekeurd"
 
     except Exception as e:
@@ -243,10 +346,13 @@ def approve_group_request(req_id, host_id):
 
 def reject_group_request(req_id, host_id):
     try:
-        supabase.table("groepsaanvragen").update({
-            "status": "rejected",
-            "processed_by": host_id
-        }).eq("id", req_id).execute()
+        session = SessionLocal()
+        req = session.query(GroepAanvragen).filter(GroepAanvragen.id == req_id).first()
+        if req:
+            req.status = "rejected"
+            req.processed_by = host_id
+            session.commit()
+        session.close()
         return True, "Aanvraag afgewezen."
     except Exception as e:
         return False, str(e)
@@ -254,164 +360,254 @@ def reject_group_request(req_id, host_id):
 
 def initialize_cash_position(group_id, amount=0.0):
     try:
-        existing = supabase.table(PORTFOLIO_TABLE).select("port_id", "current_price").eq("groep_id", group_id).eq("ticker", "CASH").limit(1).execute()
-        if existing.data:
-            current_id = existing.data[0].get("port_id")
-            needs_update = existing.data[0].get("current_price") is None
-            if needs_update and current_id is not None:
-                supabase.table(PORTFOLIO_TABLE).update({"current_price": amount}).eq("port_id", current_id).execute()
-            return True, existing.data[0]
+        session = SessionLocal()
+        existing = session.query(Portefeuille).filter(
+            Portefeuille.groep_id == group_id,
+            Portefeuille.ticker == "CASH"
+        ).first()
+        
+        if existing:
+            if existing.current_price is None:
+                existing.current_price = amount
+                session.commit()
+            session.close()
+            return True, {
+                "port_id": existing.port_id,
+                "groep_id": existing.groep_id,
+                "ticker": existing.ticker,
+                "current_price": existing.current_price,
+            }
+        
         payload = _build_cash_payload(group_id, amount)
-        response = supabase.table(PORTFOLIO_TABLE).insert(payload).execute()
-        if not response.data: return False, "Cashpositie kon niet worden aangemaakt."
-        return True, response.data[0]
+        new_cash = Portefeuille(
+            groep_id=group_id,
+            ticker=payload["ticker"],
+            name=payload["name"],
+            sector=payload["sector"],
+            quantity=payload["quantity"],
+            avg_price=payload["avg_price"],
+            current_price=payload["current_price"],
+            transactiekost=payload["transactiekost"],
+        )
+        session.add(new_cash)
+        session.commit()
+        session.close()
+        return True, {
+            "port_id": new_cash.port_id,
+            "groep_id": new_cash.groep_id,
+            "ticker": new_cash.ticker,
+            "current_price": new_cash.current_price,
+        }
     except Exception as e:
         return False, str(e)
 
 def list_group_members(group_id):
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).select("*").eq(GROUP_ID_COLUMN, group_id).order("created_at").execute()
-        normalized = [_normalize_membership_row(row) for row in (response.data or [])]
+        session = SessionLocal()
+        memberships = session.query(GroepLeden).filter(GroepLeden.groep_id == group_id).order_by(GroepLeden.created_at).all()
+        session.close()
+        normalized = [
+            _normalize_membership_row({
+                "groep_id": m.groep_id,
+                "ledenid": m.ledenid,
+                "rol": m.rol,
+                "created_at": m.created_at,
+            })
+            for m in memberships
+        ]
         return True, normalized
     except Exception as e:
         return False, str(e)
 
 def add_cash_transaction(group_id: int, amount: float, direction: str, description: str | None, created_by: int | None = None):
     try:
-        if direction not in ("in", "out"): return False, "Ongeldig type"
-        payload = {
-            "groep_id": group_id,
-            "amount": float(amount),
-            "type": direction,
-            "description": description or None,
+        if direction not in ("in", "out"):
+            return False, "Ongeldig type"
+        
+        session = SessionLocal()
+        new_tx = Kas(
+            groep_id=group_id,
+            amount=float(amount),
+            type=direction,
+            description=description or None,
+            created_by=created_by,
+        )
+        session.add(new_tx)
+        session.commit()
+        session.close()
+        return True, {
+            "kas_id": new_tx.kas_id,
+            "groep_id": new_tx.groep_id,
+            "amount": new_tx.amount,
+            "type": new_tx.type,
         }
-        if created_by is not None: payload["created_by"] = created_by
-        response = supabase.table(CASH_TX_TABLE).insert(payload).execute()
-        if not response.data: return False, "Kon transactie niet opslaan"
-        return True, response.data[0]
     except Exception as e:
         return False, str(e)
 
 def list_cash_transactions_for_group(group_id: int, limit: int | None = 200):
     try:
-        query = supabase.table(CASH_TX_TABLE).select("date, amount, type, description").eq("groep_id", group_id).order("kas_id", desc=True)
-        if limit: query = query.limit(limit)
-        response = query.execute()
-        return True, response.data or []
+        session = SessionLocal()
+        query = session.query(Kas).filter(Kas.groep_id == group_id).order_by(Kas.kas_id.desc())
+        if limit:
+            query = query.limit(limit)
+        transactions = query.all()
+        session.close()
+        result = [
+            {
+                "kas_id": t.kas_id,
+                "groep_id": t.groep_id,
+                "date": t.date.isoformat() if t.date else None,
+                "amount": t.amount,
+                "type": t.type,
+                "description": t.description,
+            }
+            for t in transactions
+        ]
+        return True, result
     except Exception as e:
         return False, str(e)
 
 def get_cash_balance_for_group(group_id: int):
     try:
-        response = supabase.table(CASH_TX_TABLE).select("amount, type").eq("groep_id", group_id).execute()
+        session = SessionLocal()
+        transactions = session.query(Kas).filter(Kas.groep_id == group_id).all()
+        session.close()
         total = 0.0
-        for row in (response.data or []):
-            amt = float(row.get("amount") or 0)
-            if (row.get("type") or "").lower() == "in": total += amt
-            else: total -= amt
+        for t in transactions:
+            amt = float(t.amount or 0)
+            if (t.type or "").lower() == "in":
+                total += amt
+            else:
+                total -= amt
         return True, total
     except Exception as e:
         return False, str(e)
 
 def count_group_members(group_id):
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).select("ledenid", count="exact").eq(GROUP_ID_COLUMN, group_id).execute()
-        if hasattr(response, "count") and response.count is not None: return True, response.count
-        return True, len(response.data or [])
+        session = SessionLocal()
+        count = session.query(GroepLeden).filter(GroepLeden.groep_id == group_id).count()
+        session.close()
+        return True, count
     except Exception as e:
         return False, str(e)
 
 def list_memberships_for_user(ledenid):
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).select("*").eq("ledenid", ledenid).order("created_at").execute()
-        normalized = [_normalize_membership_row(row) for row in (response.data or [])]
+        session = SessionLocal()
+        memberships = session.query(GroepLeden).filter(GroepLeden.ledenid == ledenid).order_by(GroepLeden.created_at).all()
+        session.close()
+        normalized = [
+            _normalize_membership_row({
+                "groep_id": m.groep_id,
+                "ledenid": m.ledenid,
+                "rol": m.rol,
+                "created_at": m.created_at,
+            })
+            for m in memberships
+        ]
         return True, normalized
     except Exception as e:
         return False, str(e)
 
 def list_groups_by_ids(group_ids):
     try:
-        if not group_ids: return True, []
-        response = supabase.table(GROUP_TABLE).select("*").in_(GROUP_ID_COLUMN, group_ids).execute()
-        normalized = [_normalize_group_row(row) for row in (response.data or [])]
+        if not group_ids:
+            return True, []
+        session = SessionLocal()
+        groups = session.query(Groep).filter(Groep.groep_id.in_(group_ids)).all()
+        session.close()
+        normalized = [
+            _normalize_group_row({
+                "groep_id": g.groep_id,
+                "groep_naam": g.groep_naam,
+                "omschrijving": g.omschrijving,
+                "invite_code": g.invite_code,
+                "owner_lid_id": g.owner_lid_id,
+                "created_at": g.created_at,
+            })
+            for g in groups
+        ]
         return True, normalized
     except Exception as e:
         return False, str(e)
 
 def remove_member_from_group(group_id: int, member_id: int):
     try:
-        response = supabase.table("groep_leden").delete().eq("groep_id", group_id).eq("ledenid", member_id).execute()
-        return True, response.data
+        session = SessionLocal()
+        session.query(GroepLeden).filter(
+            GroepLeden.groep_id == group_id,
+            GroepLeden.ledenid == member_id
+        ).delete()
+        session.commit()
+        session.close()
+        return True, "Lid verwijderd"
     except Exception as e:
         return False, str(e)
 
 def delete_group(group_id: int):
     try:
-        supabase.table("groep_leden").delete().eq("groep_id", group_id).execute()
-        supabase.table("Portefeuille").delete().eq("groep_id", group_id).execute()
-        response = supabase.table("Groep").delete().eq("groep_id", group_id).execute()
-        return True, response.data
+        session = SessionLocal()
+        session.query(GroepLeden).filter(GroepLeden.groep_id == group_id).delete()
+        session.query(Portefeuille).filter(Portefeuille.groep_id == group_id).delete()
+        session.query(Groep).filter(Groep.groep_id == group_id).delete()
+        session.commit()
+        session.close()
+        return True, "Groep verwijderd"
     except Exception as e:
         return False, str(e)
 
 def add_portfolio_position(group_id, ticker, quantity, price, user_id):
     try:
         quantity_int = int(float(quantity))
-        existing = supabase.table(PORTFOLIO_TABLE).select("*").eq("groep_id", group_id).eq("ticker", ticker).limit(1).execute()
+        session = SessionLocal()
+        existing = session.query(Portefeuille).filter(
+            Portefeuille.groep_id == group_id,
+            Portefeuille.ticker == ticker
+        ).first()
         
-        if existing.data and len(existing.data) > 0:
-            current_row = existing.data[0]
-            old_qty = float(current_row.get("quantity") or 0)
+        if existing:
+            old_qty = float(existing.quantity or 0)
             new_qty = int(old_qty) + quantity_int
-            new_avg = price
-            
-            row_id = current_row.get("port_id") or current_row.get("id")
-            if row_id:
-                supabase.table(PORTFOLIO_TABLE).update({
-                    "quantity": new_qty, 
-                    "avg_price": new_avg,
-                    "current_price": price 
-                }).eq("port_id", row_id).execute()
+            existing.quantity = new_qty
+            existing.avg_price = price
+            existing.current_price = price
+            session.commit()
             logging.info(f"Updated {ticker}: Old Qty {old_qty} -> New Qty {new_qty}")
         else:
-            payload = {
-                "groep_id": group_id,
-                "ticker": ticker,
-                "name": ticker, 
-                "quantity": quantity_int,
-                "avg_price": price, 
-                "current_price": price,
-                "sector": "Onbekend", 
-                "transactiekost": 0
-            }
-            supabase.table(PORTFOLIO_TABLE).insert(payload).execute()
+            new_pos = Portefeuille(
+                groep_id=group_id,
+                ticker=ticker,
+                name=ticker,
+                quantity=quantity_int,
+                avg_price=price,
+                current_price=price,
+                sector="Onbekend",
+                transactiekost=0,
+            )
+            session.add(new_pos)
+            session.commit()
             logging.info(f"Inserted new position: {ticker}")
+        
+        session.close()
         return True, "Succes"
     except Exception as e:
         logging.error(f"Fout bij opslaan {ticker}: {e}")
         return False, str(e)
 
 def koersen_updater(group_id):
-    """Haalt live koersen op via Yahoo Finance en update de Portefeuille.
-
-    - Gebruikt de service client wanneer beschikbaar (om RLS-issues te vermijden).
-    - Haalt prijzen op via helpers in market_data.py (centrale plek).
-    - Past GEEN kolommen bij die niet bestaan; we updaten enkel `current_price`.
-    """
+    """Haalt live koersen op via Yahoo Finance en update de Portefeuille."""
     try:
-        client = supabase_admin or supabase
-        if client is None:
-            return False, "Geen Supabase client geconfigureerd"
-
-        response = client.table(PORTFOLIO_TABLE).select("*").eq("groep_id", group_id).execute()
-        positions = response.data or []
+        session = SessionLocal()
+        positions = session.query(Portefeuille).filter(Portefeuille.groep_id == group_id).all()
 
         if not positions:
+            session.close()
             return True, "Geen posities om te updaten."
 
         updated_count = 0
         for pos in positions:
-            ticker = (pos.get('ticker') or '').upper()
+            ticker = (pos.ticker or '').upper()
             if not ticker or ticker == 'CASH':
                 continue
 
@@ -421,15 +617,13 @@ def koersen_updater(group_id):
             # Munt bepalen op basis van laatste transactie
             currency = None
             try:
-                tx = client.table(TRANSACTION_TABLE).select("munt,ticker").eq("ticker", ticker).order("datum_tr", desc=True).limit(1).execute()
-                if tx and tx.data:
-                    currency = (tx.data[0].get("munt") or "").upper() or None
+                tx = session.query(Transacties).filter(Transacties.ticker == ticker).order_by(Transacties.id.desc()).first()
+                if tx:
+                    currency = (tx.munt or "").upper() or None
             except Exception:
                 currency = None
 
-            # Optioneel: wisselkoers bepalen (maar we schrijven die NIET weg,
-            # omdat sommige schema's geen 'wisselkoers' kolom bevatten).
-            # Wisselkoers (indien nuttig voor elders); we schrijven dit niet weg in Portefeuille
+            # FX rate (voor info, niet in DB geschreven)
             fx_rate = None
             if currency and currency != "EUR":
                 try:
@@ -439,23 +633,16 @@ def koersen_updater(group_id):
             elif currency == "EUR":
                 fx_rate = 1.0
 
-            # Update positie indien we iets hebben
-            row_id = pos.get('port_id') or pos.get('id')
-            payload = {}
+            # Update positie
             if current_price is not None:
                 try:
-                    payload["current_price"] = float(current_price)
-                except Exception:
-                    pass
-            # NB: wisselkoers niet updaten in deze tabel (kolom bestaat niet in jouw schema)
-
-            if row_id and payload:
-                try:
-                    client.table(PORTFOLIO_TABLE).update(payload).eq("port_id", row_id).execute()
+                    pos.current_price = float(current_price)
+                    session.commit()
                     updated_count += 1
                 except Exception as e:
-                    logging.error(f"DB update fout voor {ticker} (row {row_id}): {e}")
+                    logging.error(f"DB update fout voor {ticker}: {e}")
 
+        session.close()
         return True, f"{updated_count} koersen succesvol bijgewerkt."
 
     except Exception as e:
@@ -465,12 +652,19 @@ def koersen_updater(group_id):
 def update_member_role(group_id, member_id, new_role):
     """Update de rol van een groepslid."""
     try:
-        response = supabase.table(GROUP_MEMBER_TABLE).update({
-            GROUP_ROLE_COLUMN: new_role
-        }).eq(GROUP_ID_COLUMN, group_id).eq("ledenid", member_id).execute()
+        session = SessionLocal()
+        membership = session.query(GroepLeden).filter(
+            GroepLeden.groep_id == group_id,
+            GroepLeden.ledenid == member_id
+        ).first()
         
-        if response.data:
+        if membership:
+            membership.rol = new_role
+            session.commit()
+            session.close()
             return True, f"Rol succesvol gewijzigd naar {new_role}"
-        return False, "Kon rol niet wijzigen (lid niet gevonden of error)."
+        
+        session.close()
+        return False, "Kon rol niet wijzigen (lid niet gevonden)."
     except Exception as e:
         return False, str(e)

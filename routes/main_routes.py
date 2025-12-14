@@ -428,8 +428,8 @@ def api_refresh_wk():
         data = request.get_json() or {}
         currencies = data.get('currencies', [])
         
-        # Gebruik de functie uit market_data.py
-        count = sync_exchange_rates_to_db(supabase, currencies)
+        # Gebruik de functie uit market_data.py (supabase param nu unused)
+        count = sync_exchange_rates_to_db(currencies=currencies)
         
         return jsonify({'updated': count, 'message': 'Koersen bijgewerkt'})
     except Exception as e:
