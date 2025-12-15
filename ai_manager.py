@@ -12,9 +12,9 @@ if GOOGLE_API_KEY and "PLAK_HIER" not in GOOGLE_API_KEY:
     try:
         genai.configure(api_key=GOOGLE_API_KEY.strip())
         GENAI_AVAILABLE = True
-        print("✅ AI Geconfigureerd")
+        print("AI Geconfigureerd")
     except Exception as e:
-        print(f"⚠️ AI Configuratiefout: {e}")
+        print(f"AI Configuratiefout: {e}")
 
 def clean_ai_response(text):
     """Verwijder Markdown, preambles en rare tekens uit de AI output."""
@@ -37,7 +37,7 @@ def generate_ai_content_safe(prompt):
     """Probeert AI aan te roepen. Geeft altijd schone HTML terug."""
     
     if not GENAI_AVAILABLE:
-        return "<p class='text-red-500'>⚠️ AI library niet geladen of geen API Key.</p>"
+        return "<p class='text-red-500'>&#9888; AI library niet geladen of geen API Key.</p>"
     
     try:
         model = genai.GenerativeModel(CURRENT_MODEL_NAME)
@@ -57,7 +57,7 @@ def generate_ai_content_safe(prompt):
             # Maak de output schoon
             return clean_ai_response(response.text)
         else:
-            return "<p class='text-slate-500'>⚠️ AI gaf een leeg antwoord terug.</p>"
+            return "<p class='text-slate-500'>&#9888; AI gaf een leeg antwoord terug.</p>"
             
     except Exception as e:
         error_msg = str(e)

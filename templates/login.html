@@ -1,12 +1,12 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>Inloggen - Investment Group Manager</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="min-h-screen bg-slate-100 font-sans">
+{% extends 'base.html' %}
+
+{% block title %}Inloggen - Investment Group Manager{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block body_class %}min-h-screen bg-slate-100 font-sans{% endblock %}
+
+{% block content_wrapper %}
     <div class="min-h-screen flex items-center justify-center px-4">
         <div class="w-full max-w-lg bg-white rounded-[2rem] shadow-xl shadow-blue-600/5 border border-slate-100 p-8 space-y-8">
             <div class="space-y-3 text-center">
@@ -34,22 +34,20 @@
                     Log in
                 </button>
             </form>
-
-            
         </div>
     </div>
+{% endblock %}
 
-    <script>
-        (() => {
-            const btn = document.getElementById('register-toggle');
-            if (!btn) return;
-            btn.addEventListener('click', () => {
-                const emailValue = document.getElementById('email').value || '';
-                // AANGEPAST: Javascript URL generatie naar auth.register
-                const target = `{{ url_for('auth.register') }}${emailValue ? `?email=${encodeURIComponent(emailValue)}` : ''}`;
-                window.location.href = target;
-            });
-        })();
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    (() => {
+        const btn = document.getElementById('register-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const emailValue = document.getElementById('email').value || '';
+            const target = `{{ url_for('auth.register') }}` + (emailValue ? `?email=${encodeURIComponent(emailValue)}` : '');
+            window.location.href = target;
+        });
+    })();
+</script>
+{% endblock %}

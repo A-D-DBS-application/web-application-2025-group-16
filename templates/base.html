@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}InvestClub{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head_extras %}{% endblock %}
+</head>
+<body class="{% block body_class %}min-h-screen bg-slate-50 font-sans text-slate-800{% endblock %}">
+    {% block nav %}
+        {% include '_nav.html' %}
+    {% endblock %}
+
+    {% block toast_container %}
+        <div id="toast-root" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+    {% endblock %}
+
+    {% block flashes %}
+        {% include '_flash_messages.html' %}
+    {% endblock %}
+
+    {% block content_wrapper %}
+        <main class="{% block main_class %}max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8{% endblock %}">
+            {% block content %}{% endblock %}
+        </main>
+    {% endblock %}
+
+    <script>
+        if (window.lucide && window.lucide.createIcons) {
+            window.lucide.createIcons();
+        }
+        setTimeout(() => {
+            const flashMessages = document.querySelectorAll('.flash');
+            flashMessages.forEach(msg => {
+                msg.style.transition = 'opacity 0.5s ease-out';
+                msg.style.opacity = '0';
+                setTimeout(() => msg.remove(), 500);
+            });
+        }, 3000);
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

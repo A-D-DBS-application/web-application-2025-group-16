@@ -1,13 +1,12 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>{{ group.name if group else 'Groep' }} - Groep</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="bg-slate-50 min-h-screen p-4 md:p-10">
+{% extends 'base.html' %}
+
+{% block title %}{{ group.name if group else 'Groep' }} - Groep{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-10{% endblock %}
+
+{% block content_wrapper %}
     <div class="max-w-5xl mx-auto space-y-6">
         {% if error %}
         <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl px-4 py-3 text-sm">
@@ -258,18 +257,6 @@
         {% endif %}
 
     
-
-        <script>
-        // Modal sluiten wanneer buiten geklikt wordt
-        document.getElementById('deleteGroupModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.classList.add('hidden');
-            }
-        });
-
-        lucide.createIcons();
-        </script>
-        
         {% else %}
         <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4">
             <p class="text-lg font-semibold text-slate-900">Geen groep gevonden</p>
@@ -282,8 +269,17 @@
         {% endif %}
     </div>
 
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const deleteModal = document.getElementById('deleteGroupModal');
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (event) => {
+            if (event.target === deleteModal) {
+                deleteModal.classList.add('hidden');
+            }
+        });
+    }
+</script>
+{% endblock %}

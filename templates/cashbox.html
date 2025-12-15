@@ -1,16 +1,10 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>Kas - Groep</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="bg-slate-50 text-slate-800">
-    {% include '_nav.html' %}
+{% extends 'base.html' %}
 
-    <main class="max-w-5xl mx-auto px-4 py-6">
+{% block title %}Kas - Groep{% endblock %}
+
+{% block main_class %}max-w-5xl mx-auto px-4 py-6{% endblock %}
+
+{% block content %}
         <h1 class="text-2xl font-bold mb-4">Kas</h1>
 
         {% if error %}
@@ -99,9 +93,4 @@
                 </table>
             </div>
         </div>
-    </main>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+{% endblock %}

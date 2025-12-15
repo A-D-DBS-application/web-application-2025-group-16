@@ -1,17 +1,10 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>Transacties</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="bg-slate-50 text-slate-800 font-sans">
-    
-    {% include '_nav.html' %}
+{% extends 'base.html' %}
 
-    <main class="max-w-6xl mx-auto px-4 py-8 pb-16">
+{% block title %}Transacties{% endblock %}
+
+{% block main_class %}max-w-6xl mx-auto px-4 py-8 pb-16{% endblock %}
+
+{% block content %}
         <div class="mb-6">
             <h1 class="text-2xl font-bold text-slate-900">Transactie-overzicht</h1>
             {% if group_id or port_id %}
@@ -104,10 +97,4 @@
                 </table>
             </div>
         </div>
-    </main>
-
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+{% endblock %}
