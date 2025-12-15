@@ -1,22 +1,135 @@
 <nav class="bg-white border-b border-slate-200 sticky top-0 z-20">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+
+    <!-- Logo -->
     <a href="{{ url_for('main.home') }}" class="flex items-center gap-2 font-bold text-slate-900">
       <span>InvestClub</span>
     </a>
 
     {% set p = request.path %}
-    <div class="flex gap-3 items-center">
-      <a href="{{ url_for('main.home') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/home') or p=='/' else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Home</a>
 
-      <a href="{{ url_for('main.cashbox') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/cash') else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Kas</a>
+    <!-- Desktop menu (ONGEWIJZIGD) -->
+    <div class="hidden md:flex gap-3 items-center">
 
-      <a href="{{ url_for('groups.group_settings') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/groups/settings') else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Instellingen</a>
+      <a href="{{ url_for('main.home') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/home') or p=='/'
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Home
+      </a>
 
-      <a href="{{ url_for('main.portfolio') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/portfolio') else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Portefeuille</a>
+      <a href="{{ url_for('main.cashbox') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/cash')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Kas
+      </a>
 
-      <a href="{{ url_for('groups.group_dashboard') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/groups/current') else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Groepsdashboard</a>
+      <a href="{{ url_for('groups.group_settings') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/settings')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Instellingen
+      </a>
 
-      <a href="{{ url_for('auth.logout') }}" class="px-4 py-2 rounded-2xl text-sm font-medium {{ 'bg-blue-50 border border-blue-200 text-blue-600' if p.startswith('/logout') else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">Uitloggen</a>
+      <a href="{{ url_for('main.portfolio') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/portfolio')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Portefeuille
+      </a>
+
+      <a href="{{ url_for('groups.group_dashboard') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/current')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Groepsdashboard
+      </a>
+
+      <a href="{{ url_for('auth.logout') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/logout')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Uitloggen
+      </a>
+
+    </div>
+
+    <!-- Hamburger (gsm) -->
+    <button id="menuBtn"
+            class="md:hidden px-3 py-2 rounded-2xl border border-slate-200 text-slate-600 hover:bg-slate-50">
+      ☰
+    </button>
+
+  </div>
+
+  <!-- Mobiel menu (ZELFDE KLEUREN / CLASSES) -->
+  <div id="mobileMenu" class="hidden md:hidden border-t border-slate-200 bg-white">
+    <div class="flex flex-col gap-2 p-4">
+
+      <a href="{{ url_for('main.home') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/home') or p=='/'
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Home
+      </a>
+
+      <a href="{{ url_for('main.cashbox') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/cash')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Kas
+      </a>
+
+      <a href="{{ url_for('groups.group_settings') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/settings')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Instellingen
+      </a>
+
+      <a href="{{ url_for('main.portfolio') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/portfolio')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Portefeuille
+      </a>
+
+      <a href="{{ url_for('groups.group_dashboard') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/current')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Groepsdashboard
+      </a>
+
+      <a href="{{ url_for('auth.logout') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/logout')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Uitloggen
+      </a>
+
     </div>
   </div>
 </nav>
+
+<script>
+  const menuBtn = document.getElementById('menuBtn');
+  const mobileMenu = document.getElementById('mobileMenu');
+
+  menuBtn.addEventListener('click', () => {
+    mobileMenu.classList.toggle('hidden');
+  });
+</script>

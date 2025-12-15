@@ -5,96 +5,190 @@
 {% block main_class %}max-w-6xl mx-auto px-4 py-8 pb-16{% endblock %}
 
 {% block content %}
-        <div class="mb-6">
-            <h1 class="text-2xl font-bold text-slate-900">Transactie-overzicht</h1>
-            {% if group_id or port_id %}
-            <p class="text-slate-500 text-sm mt-1">
-                {% if group_id %}Groep ID: <span class="font-mono text-slate-700">{{ group_id }}</span>{% endif %}
-                {% if port_id %} — Portefeuille ID: <span class="font-mono text-slate-700">{{ port_id }}</span>{% endif %}
-            </p>
-            {% endif %}
-            <p class="text-slate-500 text-sm mt-2">Historiek van uitgevoerde portefeuille transacties.</p>
-        </div>
 
-        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b border-slate-100">
-                        <tr>
-                            <th class="px-6 py-4">Datum</th>
-                            <th class="px-6 py-4">Type</th>
-                            <th class="px-6 py-4">Ticker</th>
-                            <th class="px-6 py-4 text-right">Aantal</th>
-                            <th class="px-6 py-4 text-right">Koers</th>
-                            <th class="px-6 py-4 text-right">Waarde (€)</th>
-                            <th class="px-6 py-4">Munt</th>
-                            <th class="px-6 py-4 text-right">Wisselkoers</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                    {% if transactions and transactions|length > 0 %}
-                        {% for tx in transactions %}
-                        <tr class="hover:bg-slate-50/50 transition-colors">
-                            <td class="px-6 py-4 text-slate-600 whitespace-nowrap">
-                                {{ tx.datum_tr or tx.created_at or '-' }}
-                            </td>
-                            <td class="px-6 py-4 font-bold uppercase text-xs">
-                                {% set is_cash = (tx.ticker == 'CASH') %}
-                                {% set cash_amount = tx.koers or 0 %}
-                                {% set cash_positive = is_cash and cash_amount >= 0 %}
-                                {% set cash_negative = is_cash and cash_amount < 0 %}
-                                {% if tx.type == 'BUY' %}
-                                    <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Buy</span>
-                                {% elif tx.type == 'SELL' %}
-                                    <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Sell</span>
-                                {% elif tx.type == 'FEE' %}
-                                    <span class="text-slate-500 bg-slate-100 px-2 py-1 rounded">Kost</span>
-                                {% elif cash_positive %}
-                                    <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Transfer</span>
-                                {% elif cash_negative %}
-                                    <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Transfer</span>
-                                {% else %}
-                                    <span class="text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ tx.type }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 font-semibold text-slate-900">
-                                {% if tx.ticker == 'CASH' %}Cash{% else %}{{ tx.ticker }}{% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-right text-slate-600 font-mono">
-                                {% if tx.ticker == 'CASH' %}—{% else %}{{ tx.aantal }}{% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-right text-slate-600 font-mono">
-                                {% if tx.ticker == 'CASH' %}
-                                    € {{ '%.2f'|format(tx.koers or 0) }}
-                                {% else %}
-                                    {{ '%.6f'|format(tx.koers) }}
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-right font-bold text-slate-900 font-mono">
-                                {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
-                                {% if is_cash %}
-                                    € {{ '%.2f'|format(tx.koers or 0) }}
-                                {% else %}
-                                    € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-slate-500 text-xs">
-                                {% if tx.ticker == 'CASH' %}EUR{% else %}{{ tx.munt or 'EUR' }}{% endif %}
-                            </td>
-                            <td class="px-6 py-4 text-right text-slate-400 text-xs font-mono">
-                                {% if tx.ticker == 'CASH' %}—{% else %}{{ '%.4f'|format(wk) }}{% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="8" class="px-6 py-10 text-center text-slate-400 italic">
-                                Geen transacties gevonden.
-                            </td>
-                        </tr>
-                    {% endif %}
-                    </tbody>
-                </table>
-            </div>
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-slate-900">Transactie-overzicht</h1>
+  <p class="text-slate-500 text-sm mt-2">
+    Historiek van uitgevoerde portefeuille transacties.
+  </p>
+</div>
+
+{% if transactions and transactions|length > 0 %}
+
+<!-- ===================== -->
+<!-- 📱 MOBIEL: CARD LAYOUT -->
+<!-- ===================== -->
+<div class="md:hidden space-y-4">
+  {% for tx in transactions %}
+  {% set is_cash = (tx.ticker == 'CASH') %}
+  {% set cash_amount = tx.koers or 0 %}
+  {% set cash_positive = is_cash and cash_amount >= 0 %}
+  {% set cash_negative = is_cash and cash_amount < 0 %}
+  {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
+
+  <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+
+    <!-- Header -->
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="font-bold text-slate-900">
+          {% if is_cash %}Cash{% else %}{{ tx.ticker }}{% endif %}
         </div>
+        <div class="text-xs text-slate-500 mt-1">
+          {{ tx.datum_tr or tx.created_at }}
+        </div>
+      </div>
+
+      <!-- Type badge -->
+      <div class="text-xs font-bold uppercase">
+        {% if tx.type == 'BUY' %}
+          <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Buy</span>
+        {% elif tx.type == 'SELL' %}
+          <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Sell</span>
+        {% elif tx.type == 'FEE' %}
+          <span class="text-slate-500 bg-slate-100 px-2 py-1 rounded">Kost</span>
+        {% elif cash_positive %}
+          <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Transfer</span>
+        {% elif cash_negative %}
+          <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Transfer</span>
+        {% else %}
+          <span class="text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ tx.type }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Info grid -->
+    <div class="grid grid-cols-2 gap-x-4 gap-y-3 mt-4 text-sm">
+
+      <div>
+        <div class="text-slate-500 text-xs">Aantal</div>
+        <div class="font-mono text-slate-700">
+          {% if is_cash %}—{% else %}{{ tx.aantal }}{% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-slate-500 text-xs">Koers</div>
+        <div class="font-mono text-slate-700">
+          {% if is_cash %}
+            € {{ '%.2f'|format(tx.koers or 0) }}
+          {% else %}
+            {{ '%.6f'|format(tx.koers or 0) }}
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-slate-500 text-xs">Munt</div>
+        <div class="text-slate-700 font-mono">
+          {% if is_cash %}EUR{% else %}{{ tx.munt or 'EUR' }}{% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-slate-500 text-xs">Wisselkoers</div>
+        <div class="font-mono text-slate-700">
+          {% if is_cash %}—{% else %}{{ '%.4f'|format(wk) }}{% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Waarde -->
+    <div class="mt-4 flex justify-between items-center border-t pt-3">
+      <span class="text-slate-500 text-sm">Waarde (€)</span>
+      <span class="font-bold text-slate-900 font-mono">
+        {% if is_cash %}
+          € {{ '%.2f'|format(tx.koers or 0) }}
+        {% else %}
+          € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
+        {% endif %}
+      </span>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ===================== -->
+<!-- 🖥️ DESKTOP: TABEL -->
+<!-- ===================== -->
+<div class="hidden md:block bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm text-left">
+      <thead class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs border-b">
+        <tr>
+          <th class="px-6 py-4">Datum</th>
+          <th class="px-6 py-4">Type</th>
+          <th class="px-6 py-4">Ticker</th>
+          <th class="px-6 py-4 text-right">Aantal</th>
+          <th class="px-6 py-4 text-right">Koers</th>
+          <th class="px-6 py-4 text-right">Waarde (€)</th>
+          <th class="px-6 py-4">Munt</th>
+          <th class="px-6 py-4 text-right">Wisselkoers</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for tx in transactions %}
+        {% set is_cash = (tx.ticker == 'CASH') %}
+        {% set cash_amount = tx.koers or 0 %}
+        {% set cash_positive = is_cash and cash_amount >= 0 %}
+        {% set cash_negative = is_cash and cash_amount < 0 %}
+        {% set wk = tx.wisselkoers if tx.wisselkoers and tx.wisselkoers > 0 else 1 %}
+        <tr class="hover:bg-slate-50/50">
+          <td class="px-6 py-4 whitespace-nowrap">{{ tx.datum_tr or tx.created_at }}</td>
+          <td class="px-6 py-4 font-bold uppercase text-xs">
+            {% if tx.type == 'BUY' %}
+              <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Buy</span>
+            {% elif tx.type == 'SELL' %}
+              <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Sell</span>
+            {% elif tx.type == 'FEE' %}
+              <span class="text-slate-500 bg-slate-100 px-2 py-1 rounded">Kost</span>
+            {% elif cash_positive %}
+              <span class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Transfer</span>
+            {% elif cash_negative %}
+              <span class="text-rose-600 bg-rose-50 px-2 py-1 rounded">Transfer</span>
+            {% else %}
+              <span class="text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ tx.type }}</span>
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 font-semibold">
+            {% if is_cash %}Cash{% else %}{{ tx.ticker }}{% endif %}
+          </td>
+          <td class="px-6 py-4 text-right font-mono">
+            {% if is_cash %}—{% else %}{{ tx.aantal }}{% endif %}
+          </td>
+          <td class="px-6 py-4 text-right font-mono">
+            {% if is_cash %}
+              € {{ '%.2f'|format(tx.koers or 0) }}
+            {% else %}
+              {{ '%.6f'|format(tx.koers or 0) }}
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 text-right font-bold font-mono">
+            {% if is_cash %}
+              € {{ '%.2f'|format(tx.koers or 0) }}
+            {% else %}
+              € {{ '%.2f'|format((tx.aantal or 0) * (tx.koers or 0) / wk) }}
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 text-xs">
+            {% if is_cash %}EUR{% else %}{{ tx.munt or 'EUR' }}{% endif %}
+          </td>
+          <td class="px-6 py-4 text-right text-xs font-mono">
+            {% if is_cash %}—{% else %}{{ '%.4f'|format(wk) }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="text-center text-slate-400 italic py-12">
+  Geen transacties gevonden.
+</div>
+{% endif %}
+
 {% endblock %}

@@ -23,7 +23,11 @@
                 <p class="text-slate-500">Gemaakt op {{ group.created_at }}</p>
                 {% endif %}
             </div>
-            <div class="flex flex-wrap gap-3 justify-end">
+
+            <!-- ========================= -->
+            <!-- DESKTOP: EXACT ORIGINEEL -->
+            <!-- ========================= -->
+            <div class="hidden md:flex flex-wrap gap-3 justify-end">
                 <a href="{{ url_for('main.portfolio') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
                     <i data-lucide="pie-chart" class="h-5 w-5"></i>
                     Portefeuille
@@ -32,7 +36,7 @@
                     <i data-lucide="piggy-bank" class="h-5 w-5"></i>
                     Kas
                 </a>
-                <a href="{{ url_for('groups.group_settings') }}" 
+                <a href="{{ url_for('groups.group_settings') }}"
                 class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
                     <i data-lucide="settings" class="h-5 w-5"></i>
                     Instellingen
@@ -49,6 +53,48 @@
                     Uitloggen
                 </a>
             </div>
+
+            <!-- ========================= -->
+            <!-- GSM: HAMBURGER DROPDOWN  -->
+            <!-- (alleen op gsm zichtbaar) -->
+            <!-- ========================= -->
+            <div class="md:hidden relative self-end">
+                <button id="groupMenuBtn"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50">
+                    <i data-lucide="menu" class="h-5 w-5"></i>
+                    
+                </button>
+
+                <div id="groupMenu"
+                     class="hidden absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-lg p-2 z-30">
+
+                    <a href="{{ url_for('main.portfolio') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="pie-chart" class="h-4 w-4"></i>
+                        Portefeuille
+                    </a>
+
+                    <a href="{{ url_for('main.cashbox') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="piggy-bank" class="h-4 w-4"></i>
+                        Kas
+                    </a>
+
+                    <a href="{{ url_for('groups.group_settings') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="settings" class="h-4 w-4"></i>
+                        Instellingen
+                    </a>
+
+                    <a href="{{ url_for('main.home') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="home" class="h-4 w-4"></i>
+                        Home
+                    </a>
+
+                    <a href="{{ url_for('auth.logout') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="log-out" class="h-4 w-4"></i>
+                        Uitloggen
+                    </a>
+                </div>
+            </div>
+
         </div>
 
         <div class="grid gap-4 md:grid-cols-3">
@@ -76,7 +122,7 @@
                     <i data-lucide="users" class="h-5 w-5 text-blue-500"></i>
                     Ledenlijst
                 </h2>
-                
+
             </div>
             <div class="divide-y divide-slate-100">
                 {% if members %}
@@ -95,7 +141,7 @@
                             {% endif %}
 
                             {% if is_owner %}
-                                
+
                                 {% if member.role == 'host' %}
                                     {% if member.ledenid != group.owner_id %}
                                     <form method="POST" action="{{ url_for('groups.demote_member', member_id=member.ledenid) }}" onsubmit="return confirm('Weet je zeker dat je de rechten van {{ member.volledige_naam }} wilt afnemen?')">
@@ -128,8 +174,8 @@
                     <div class="px-6 py-10 text-center text-slate-400 text-sm">Nog geen leden gevonden.</div>
                 {% endif %}
             </div>
-        
-            
+
+
         </div>
 
             {% if entry_cost %}
@@ -140,7 +186,7 @@
                 <p class="text-xs text-emerald-600">
                     NAV per lid: € {{ entry_cost.nav_per_member | round(2) }}<br>
                     + NAV fee: € {{ entry_cost.nav_fee | round(2) }}<br>
-                    
+
                 </p>
 
             </div>
@@ -187,7 +233,7 @@
             <div class="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50">
                 <div>
                     <p class="font-semibold text-slate-900">
-                        {{ r.full_name }} 
+                        {{ r.full_name }}
                         {% if r.type == 'join' %}
                             wil lid worden van de groep
                         {% elif r.type == 'leave' %}
@@ -239,7 +285,7 @@
                 </div>
             </div>
         </div>
-        
+
         {% else %}
         <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
             <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -256,7 +302,7 @@
         </div>
         {% endif %}
 
-    
+
         {% else %}
         <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4">
             <p class="text-lg font-semibold text-slate-900">Geen groep gevonden</p>
@@ -273,11 +319,28 @@
 
 {% block scripts %}
 <script>
+    // Bestaand delete modal script (ongewijzigd)
     const deleteModal = document.getElementById('deleteGroupModal');
     if (deleteModal) {
         deleteModal.addEventListener('click', (event) => {
             if (event.target === deleteModal) {
                 deleteModal.classList.add('hidden');
+            }
+        });
+    }
+
+    // Nieuw: hamburger dropdown voor gsm acties
+    const groupMenuBtn = document.getElementById('groupMenuBtn');
+    const groupMenu = document.getElementById('groupMenu');
+
+    if (groupMenuBtn && groupMenu) {
+        groupMenuBtn.addEventListener('click', () => {
+            groupMenu.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!groupMenuBtn.contains(e.target) && !groupMenu.contains(e.target)) {
+                groupMenu.classList.add('hidden');
             }
         });
     }
