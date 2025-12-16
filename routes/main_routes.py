@@ -1,36 +1,38 @@
-# nodig voor je Dashboard, Cashbox en Transacties
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
-import pandas as pd
-import io
-from fuzzy_search import search_tickers, refresh_ticker_index  
+# nodig voor Dashboard, Cashbox en Transacties
+from __future__ import annotations
 
-# Imports
-from config import supabase, SUPABASE_URL, SUPABASE_ANON_KEY
+import io
+
+import pandas as pd
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
+
+from config import SUPABASE_ANON_KEY, SUPABASE_URL, supabase
 from auth import (
     add_cash_transaction,
     add_portfolio_position,
     get_cash_balance_for_group,
+    get_membership_for_user_in_group,
     initialize_cash_position,
     koersen_updater,
     list_cash_transactions_for_group,
     list_leden,
     log_portfolio_transaction,
-    get_membership_for_user_in_group,
 )
-# Zoek naar je imports bovenaan en zorg dat dit er staat:
-from market_data import get_ticker_data, sync_exchange_rates_to_db 
-import ai_manager  # Jouw nieuwe ai_manager.py
+from fuzzy_search import refresh_ticker_index, search_tickers
+from market_data import get_ticker_data, sync_exchange_rates_to_db
+from models import Portefeuille, SessionLocal, Transacties, Wisselkoersen
 from view_helpers import login_required, with_group_context
+import ai_manager
 
-main_bp = Blueprint('main', __name__)
+main_bp = Blueprint("main", __name__)
 
-# --- PAGES ---
 
 @main_bp.route("/home")
 @login_required()
 @with_group_context()
 def home():
     return render_template("home.html", group_snapshot=g.group_snapshot, user_groups=g.user_groups)
+
 
 @main_bp.route("/portfolio")
 @login_required()
@@ -45,6 +47,7 @@ def portfolio():
         is_host=g.is_host,
     )
 
+
 @main_bp.route("/cash", methods=["GET", "POST"])
 @login_required()
 @with_group_context(require_active=True)
@@ -54,7 +57,8 @@ def cashbox():
     error = None
 
     if request.method == "POST":
-        if not is_host: error = "Alleen hosts."
+        if not is_host:
+            error = "Alleen hosts."
         else:
             try:
                 amt = float(request.form.get("amount", "0").strip())
@@ -62,28 +66,22 @@ def cashbox():
                 desc = request.form.get("description")
                 add_cash_transaction(snap["id"], amt, direction, desc, g.user_id)
                 return redirect(url_for("main.cashbox"))
-            except: error = "Fout in invoer."
+            except Exception:
+                error = "Fout in invoer."
 
     ok, hist = list_cash_transactions_for_group(snap["id"])
     ok, bal = get_cash_balance_for_group(snap["id"])
     return render_template("cashbox.html", balance=bal or 0, history=hist or [], error=error, is_host=is_host)
 
-# Verplaatst naar routes/transacties.py
-
-# Verplaatst naar routes/transacties.py
 
 @main_bp.route("/api/dashboard-snapshot")
 @login_required(response="json")
 @with_group_context(response="json", require_active=True)
 def api_dashboard_snapshot():
-    """Return a snapshot for the active group so the dashboard has context."""
     try:
         ok, bal = get_cash_balance_for_group(g.group_snapshot["id"])
-        return jsonify({
-            "group": g.group_snapshot,
-            "cash_balance": bal or 0.0,
-        })
-    except Exception as exc:
+        return jsonify({"group": g.group_snapshot, "cash_balance": bal or 0.0})
+    except Exception as exc:  # pragma: no cover
         return jsonify({"error": str(exc)}), 500
 
 
@@ -98,6 +96,7 @@ def api_cash_transfer():
         amount = 0.0
     direction = str(payload.get("direction") or "in").lower()
     target = str(payload.get("target") or "portfolio").lower()
+
     if amount <= 0:
         return jsonify({"error": "Bedrag moet groter dan 0 zijn"}), 400
     if direction not in ("in", "out"):
@@ -106,98 +105,153 @@ def api_cash_transfer():
         return jsonify({"error": "Ongeldig doel"}), 400
 
     gid = g.group_snapshot["id"]
+
+    if target == "kas":
+        ok_bal, current_bal = get_cash_balance_for_group(gid)
+        if not ok_bal:
+            return jsonify({"error": current_bal or "Kas saldo ophalen mislukt"}), 500
+        delta = amount if direction == "in" else -amount
+        next_kas = float(current_bal or 0) + delta
+        if next_kas < -1e-6:
+            return jsonify({"error": "Kas kan niet negatief worden"}), 400
+
+        ok_cash, cash_row = add_cash_transaction(gid, amount, direction, payload.get("description"), g.user_id)
+        if not ok_cash:
+            return jsonify({"error": cash_row or "Kastransactie opslaan mislukt"}), 500
+
+        return jsonify({"target": target, "kas_balance": next_kas, "cash_entry": cash_row})
+
+    session = None
     try:
-        if target == "kas":
-            ok_bal, current_bal = get_cash_balance_for_group(gid)
-            if not ok_bal:
-                return jsonify({"error": current_bal or "Kas saldo ophalen mislukt"}), 500
-            delta = amount if direction == "in" else -amount
-            next_kas = float(current_bal or 0) + delta
-            if next_kas < -1e-6:
-                return jsonify({"error": "Kas kan niet negatief worden"}), 400
-
-            ok_cash, cash_row = add_cash_transaction(
-                gid,
-                amount,
-                direction,
-                payload.get("description"),
-                g.user_id,
-            )
-            if not ok_cash:
-                return jsonify({"error": cash_row or "Kastransactie opslaan mislukt"}), 500
-
-            return jsonify({
-                "target": target,
-                "kas_balance": next_kas,
-                "cash_entry": cash_row
-            })
-
-        res = supabase.table("Portefeuille").select("port_id,current_price").eq("groep_id", gid).eq("ticker", "CASH").limit(1).execute()
-        cash_row = (res.data or [None])[0]
+        session = SessionLocal()
+        cash_row = (
+            session.query(Portefeuille)
+            .filter(Portefeuille.groep_id == gid, Portefeuille.ticker == "CASH")
+            .first()
+        )
         if not cash_row:
-            ok, created = initialize_cash_position(gid, 0)
-            if not ok or not created:
+            session.close()
+            session = None
+            ok_init, _ = initialize_cash_position(gid, 0)
+            if not ok_init:
                 return jsonify({"error": "Cashpositie kon niet worden aangemaakt"}), 500
-            cash_row = created if isinstance(created, dict) else (created[0] if isinstance(created, list) and created else None)
+            session = SessionLocal()
+            cash_row = (
+                session.query(Portefeuille)
+                .filter(Portefeuille.groep_id == gid, Portefeuille.ticker == "CASH")
+                .first()
+            )
             if not cash_row:
                 return jsonify({"error": "Cashpositie kon niet worden aangemaakt"}), 500
 
-        current = float(cash_row.get("current_price") or 0)
+        current = float(cash_row.quantity or 0.0)
         delta = amount if direction == "in" else -amount
         next_balance = current + delta
         if next_balance < -1e-6:
             return jsonify({"error": "Cash kan niet negatief worden"}), 400
 
-        port_id = cash_row.get("port_id") or cash_row.get("id")
-        supabase.table("Portefeuille").update({"current_price": next_balance}).eq("port_id", port_id).execute()
+        cash_row.quantity = next_balance
+        session.commit()
+        port_id = cash_row.port_id
+    except Exception as exc:
+        if session is not None:
+            session.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        if session is not None:
+            session.close()
 
-        trade_type = "TRANSFER"
-        price_value = amount if direction == "in" else -amount
-        datum_tr = payload.get("date") or payload.get("datum_tr")
-        ok, tx_row = log_portfolio_transaction(port_id, "CASH", trade_type, 1, price_value, 1.0, "EUR", datum_tr)
-        if not ok:
-            return jsonify({"error": tx_row or "Transactie log mislukt"}), 500
+    trade_type = "TRANSFER"
+    price_value = amount if direction == "in" else -amount
+    datum_tr = payload.get("date") or payload.get("datum_tr")
+    ok_tx, tx_row = log_portfolio_transaction(port_id, "CASH", trade_type, 1, price_value, 1.0, "EUR", datum_tr)
+    if not ok_tx:
+        return jsonify({"error": tx_row or "Transactie log mislukt"}), 500
 
-        return jsonify({
-            "balance": next_balance,
-            "transaction": tx_row,
-            "type": trade_type,
-            "target": target
-        })
+    return jsonify({"balance": next_balance, "transaction": tx_row, "type": trade_type, "target": target})
+
+
+@main_bp.route("/api/cash/set_balance", methods=["POST"])
+@login_required(response="json")
+@with_group_context(response="json", require_active=True, require_host=True)
+def api_set_cash_balance():
+    try:
+        payload = request.get_json() or {}
+        try:
+            amount = float(payload.get("amount") or payload.get("balance") or 0.0)
+        except Exception:
+            return jsonify({"error": "Ongeldig bedrag"}), 400
+
+        gid = g.group_snapshot["id"]
+        session = SessionLocal()
+        try:
+            cash_row = (
+                session.query(Portefeuille)
+                .filter(Portefeuille.groep_id == gid, Portefeuille.ticker == "CASH")
+                .first()
+            )
+            if not cash_row:
+                session.close()
+                session = None
+                ok_init, _ = initialize_cash_position(gid, amount)
+                if not ok_init:
+                    return jsonify({"error": "Cashpositie kon niet worden aangemaakt"}), 500
+                session = SessionLocal()
+                cash_row = (
+                    session.query(Portefeuille)
+                    .filter(Portefeuille.groep_id == gid, Portefeuille.ticker == "CASH")
+                    .first()
+                )
+            if not cash_row:
+                return jsonify({"error": "Cashpositie niet gevonden"}), 404
+
+            cash_row.quantity = amount
+            session.commit()
+            balance = float(cash_row.quantity or 0.0)
+            return jsonify({"balance": balance, "port_id": cash_row.port_id})
+        except Exception:
+            if session is not None:
+                session.rollback()
+            raise
+        finally:
+            if session is not None:
+                session.close()
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
 
 @main_bp.route("/api/portfolio/<int:port_id>/add_cost", methods=["POST"])
 @login_required(response="json")
 def api_add_portfolio_cost(port_id: int):
-    """Verhoog cumulatieve transactiekost voor een portfolio.
-    Body: { amount: number }
-    """
-    # Controle: gebruiker moet lid zijn van de groep van deze portfolio
     try:
-        port = supabase.table("Portefeuille").select("port_id, groep_id, transactiekost").eq("port_id", port_id).limit(1).execute()
-        rows = port.data or []
-        if not rows:
+        session = SessionLocal()
+        port = session.query(Portefeuille).filter(Portefeuille.port_id == port_id).first()
+        if not port:
+            session.close()
             return jsonify({"error": "Portfolio niet gevonden"}), 404
-        row = rows[0]
-        gid = row.get("groep_id")
+
+        gid = port.groep_id
         ok, mem = get_membership_for_user_in_group(g.user_id, gid)
         if not (ok and mem):
+            session.close()
             return jsonify({"error": "Geen toegang"}), 403
 
         data = request.get_json() or {}
         amt = float(data.get("amount") or 0)
         if amt <= 0:
+            session.close()
             return jsonify({"error": "Amount moet > 0"}), 400
 
-        current = float(row.get("transactiekost") or 0)
+        current = float(port.transactiekost or 0)
         new_val = current + amt
-        supabase.table("Portefeuille").update({"transactiekost": new_val}).eq("port_id", port_id).execute()
+        port.transactiekost = new_val
+        session.commit()
+        session.close()
         return jsonify({"port_id": port_id, "transactiekost": new_val})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
-    
+
 @main_bp.route("/leden")
 @login_required()
 @with_group_context()
@@ -205,66 +259,110 @@ def leden():
     ok, res = list_leden()
     return render_template("leden.html", leden=res if ok else [], is_host=g.is_host)
 
-# --- ACTIES (CSV, REFRESH, LOG) ---
 
 @main_bp.route("/group/<int:group_id>/refresh_prices")
 @login_required()
 def refresh_prices(group_id):
-    ok, msg = koersen_updater(group_id)  # Update via server-side helper
+    ok, msg = koersen_updater(group_id)
     if ok:
         flash(msg or "Koersen ververst.", "success")
     else:
         flash(msg or "Verversen mislukt.", "error")
     return redirect(url_for("main.portfolio"))
 
-# JSON variant voor AJAX: ververst enkel koersen, geeft count/boodschap terug
+
 @main_bp.route("/api/groups/<int:group_id>/refresh_prices", methods=["POST"])
 @login_required(response="json")
 def api_refresh_prices(group_id):
     ok, msg = koersen_updater(group_id)
     if not ok:
         return jsonify({"error": msg or "Verversen mislukt"}), 500
-    # Probeer een getal uit het bericht te halen
     updated = None
     try:
         import re
-        m = re.search(r"(\d+)", msg or "")
-        if m:
-            updated = int(m.group(1))
+
+        match = re.search(r"(\d+)", msg or "")
+        if match:
+            updated = int(match.group(1))
     except Exception:
-        pass
+        updated = None
     return jsonify({"ok": True, "message": msg, "updated": updated})
+
 
 @main_bp.route("/api/transactions/log", methods=["POST"])
 @login_required(response="json")
 @with_group_context(response="json", require_active=True, require_host=True)
 def api_log_transaction():
     data = request.get_json() or {}
-    # Logica doorsturen naar auth.py helper
     ok, res = log_portfolio_transaction(
-        data.get("portefeuille_id"), data.get("ticker"), data.get("type"),
-        float(data.get("aantal") or 0), float(data.get("koers") or 0),
-        float(data.get("wisselkoers") or 1), data.get("munt"), data.get("datum_tr")
+        data.get("portefeuille_id"),
+        data.get("ticker"),
+        data.get("type"),
+        float(data.get("aantal") or 0),
+        float(data.get("koers") or 0),
+        float(data.get("wisselkoers") or 1),
+        data.get("munt"),
+        data.get("datum_tr"),
     )
-    if not ok: return jsonify({"error": res}), 400
+    if not ok:
+        return jsonify({"error": res}), 400
     return jsonify({"transaction": res})
 
-# --- AI ENDPOINTS ---
+
+@main_bp.route("/api/groups/<int:group_id>/portfolio/positions", methods=["POST"])
+@login_required(response="json")
+@with_group_context(response="json", require_active=True, require_host=True)
+def api_create_portfolio_position(group_id: int):
+    payload = request.get_json() or {}
+    ticker = (payload.get("ticker") or "").strip().upper()
+    quantity = payload.get("quantity")
+    price = payload.get("avg_price") or payload.get("price")
+    name = payload.get("name")
+    sector = payload.get("sector")
+    transaction_cost = payload.get("transactiekost")
+
+    if not ticker:
+        return jsonify({"error": "Ticker verplicht"}), 400
+
+    ok, result = add_portfolio_position(
+        group_id,
+        ticker,
+        quantity,
+        price,
+        g.user_id,
+        asset_name=name,
+        asset_sector=sector,
+        transaction_cost=transaction_cost,
+    )
+    if not ok:
+        return jsonify({"error": result}), 400
+
+    return jsonify({"position": result})
+
+
 @main_bp.route("/api/ai/analyze-stock", methods=["POST"])
 @login_required(response="json")
 def analyze_stock():
-    tick = request.get_json().get("ticker")
-    prompt = f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. Output mag geen tabellen bevatten, maar wel een mooie opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
+    tick = (request.get_json() or {}).get("ticker")
+    prompt = (
+        f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. "
+        "Output mag geen tabellen bevatten, maar wel een mooie opmaak titels en tussentitels mogen in het vet. "
+        "Geef jouw antwoord in HTML."
+    )
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
+
 
 @main_bp.route("/api/ai/analyze-portfolio", methods=["POST"])
 @login_required(response="json")
 def analyze_portfolio():
     data = request.get_json()
-    prompt = f"Maak een diepe analyse van deze portefeuille: {data}. Output mag geen tabellen bevatten, maar wel een mooie opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
+    prompt = (
+        f"Maak een diepe analyse van deze portefeuille: {data}. Output mag geen tabellen bevatten, maar wel een mooie "
+        "opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
+    )
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
-# --- IMPORT CSV ROUTE (ONTBRAK EERDER) ---
+
 @main_bp.route("/group/<int:group_id>/import_csv", methods=["POST"])
 @login_required()
 @with_group_context(require_active=True, require_host=True)
@@ -273,131 +371,145 @@ def import_csv(group_id):
         flash("Onbekende groep geselecteerd.", "error")
         return redirect(url_for("main.portfolio"))
 
-    file = request.files.get('file')
+    file = request.files.get("file")
     if file and file.filename:
         try:
-            # Lees CSV
             stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-            try: df = pd.read_csv(stream, sep=None, engine='python')
-            except: 
+            try:
+                df = pd.read_csv(stream, sep=None, engine="python")
+            except Exception:
                 stream.seek(0)
-                df = pd.read_csv(stream, sep=';')
-            
-            # Kolommen normaliseren
+                df = pd.read_csv(stream, sep=";")
+
             df.columns = [str(c).lower().strip() for c in df.columns]
             col_map = {
-                'ticker': ['ticker', 'symbol', 'symbool', 'product', 'isin'],
-                'amount': ['aantal', 'quantity', 'stuks', 'number'],
-                'price': ['price', 'prijs', 'koers', 'aankoopprijs', 'avg price', 'cost']
+                "ticker": ["ticker", "symbol", "symbool", "product", "isin"],
+                "amount": ["aantal", "quantity", "stuks", "number"],
+                "price": ["price", "prijs", "koers", "aankoopprijs", "avg price", "cost"],
             }
-            found = {}
-            for k, opts in col_map.items():
-                for o in opts:
-                    if o in df.columns: 
-                        found[k] = o
+            found: dict[str, str] = {}
+            for key, options in col_map.items():
+                for opt in options:
+                    if opt in df.columns:
+                        found[key] = opt
                         break
-            
+
             if len(found) == 3:
                 cnt = 0
                 for _, row in df.iterrows():
                     try:
-                        t = str(row[found['ticker']]).upper().strip()
-                        def clean(v):
-                            if isinstance(v, (int, float)): return float(v)
-                            v = str(v).replace('€','').replace('$','').strip()
-                            if ',' in v and '.' in v:
-                                if v.find(',') < v.find('.'): v = v.replace(',','')
-                                else: v = v.replace('.','').replace(',','.')
-                            elif ',' in v: v = v.replace(',','.')
-                            return float(v)
-                        a = clean(row[found['amount']])
-                        p = clean(row[found['price']])
-                        
-                        if t and a > 0:
-                            # Voeg positie toe
-                            add_portfolio_position(group_id, t, a, p, g.user_id)
+                        ticker = str(row[found["ticker"]]).upper().strip()
+
+                        def clean(value):
+                            if isinstance(value, (int, float)):
+                                return float(value)
+                            text = str(value).replace("€", "").replace("$", "").strip()
+                            if "," in text and "." in text:
+                                if text.find(",") < text.find("."):
+                                    text = text.replace(",", "")
+                                else:
+                                    text = text.replace(".", "").replace(",", ".")
+                            elif "," in text:
+                                text = text.replace(",", ".")
+                            return float(text)
+
+                        amount = clean(row[found["amount"]])
+                        price = clean(row[found["price"]])
+
+                        if ticker and amount > 0:
+                            add_portfolio_position(group_id, ticker, amount, price, g.user_id)
                             cnt += 1
-                    except: pass
+                    except Exception:
+                        continue
                 flash(f"Succes! {cnt} posities geïmporteerd.", "success")
             else:
                 flash("Kolommen niet gevonden. Zorg voor: Ticker, Aantal, Prijs.", "error")
-        except Exception as e:
-            flash(f"Fout bij import: {e}", "error")
-            
+        except Exception as exc:
+            flash(f"Fout bij import: {exc}", "error")
+
     return redirect(url_for("main.portfolio"))
 
-# --- API ROUTES (VOOR YAHOO FINANCE & WISSELKOERSEN) ---
 
-@main_bp.route('/api/quote/<ticker>')
+@main_bp.route("/api/quote/<ticker>")
 @login_required(response="json")
 def api_get_quote(ticker):
-    """Haalt koersdata op via market_data.py"""
     data = get_ticker_data(ticker)
     if data:
         return jsonify(data)
-    return jsonify({'error': 'Ticker niet gevonden of API fout'}), 404
+    return jsonify({"error": "Ticker niet gevonden of API fout"}), 404
 
-@main_bp.route('/api/currency/<ticker>')
+
+@main_bp.route("/api/currency/<ticker>")
 @login_required(response="json")
 def api_get_currency(ticker):
-    """Zoekt in eerdere transacties welke munt bij deze ticker hoort."""
     try:
-        # Zoek in database naar laatste transactie van deze ticker
-        res = supabase.table('Transacties').select('munt').eq('ticker', ticker.upper()).limit(1).execute()
-        rows = res.data or []
-        if rows:
-            return jsonify({'currency': rows[0].get('munt')})
-        return jsonify({'currency': None})
+        session = SessionLocal()
+        try:
+            tx = (
+                session.query(Transacties.munt)
+                .filter(Transacties.ticker == ticker.strip().upper())
+                .order_by(Transacties.datum_tr.desc(), Transacties.transactie_id.desc())
+                .first()
+            )
+        finally:
+            session.close()
+        if tx and tx[0]:
+            return jsonify({"currency": tx[0]})
+        return jsonify({"currency": None})
     except Exception:
-        return jsonify({'currency': None})
+        return jsonify({"currency": None})
 
-@main_bp.route('/api/wk/<cur>')
+
+@main_bp.route("/api/wk/<cur>")
 def api_get_wk(cur):
-    """Haalt opgeslagen wisselkoers uit de database."""
     try:
-        code = (cur or '').strip().upper()
-        if code == 'EUR': return jsonify({'rate': 1.0})
-        
-        res = supabase.table('Wisselkoersen').select('wk').eq('munt', code).limit(1).execute()
-        if res.data:
-            return jsonify({'rate': res.data[0].get('wk')})
-        return jsonify({'error': 'Niet gevonden'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        code = (cur or "").strip().upper()
+        if code == "EUR":
+            return jsonify({"rate": 1.0})
 
-@main_bp.route('/api/refresh-wk', methods=['POST'])
+        session = SessionLocal()
+        try:
+            row = (
+                session.query(Wisselkoersen)
+                .filter(Wisselkoersen.munt == code)
+                .first()
+            )
+            if row:
+                return jsonify({"rate": row.wk})
+            return jsonify({"error": "Niet gevonden"}), 404
+        finally:
+            session.close()
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@main_bp.route("/api/refresh-wk", methods=["POST"])
 @login_required(response="json")
 def api_refresh_wk():
-    """Update de wisselkoersen in de database (aangeroepen door de knop 'Ververs WK')."""
     try:
         data = request.get_json() or {}
-        currencies = data.get('currencies', [])
-        
-        # Gebruik de functie uit market_data.py (supabase param nu unused)
+        currencies = data.get("currencies", [])
         count = sync_exchange_rates_to_db(currencies=currencies)
-        
-        return jsonify({'updated': count, 'message': 'Koersen bijgewerkt'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-@main_bp.route('/api/search-tickers')
+        return jsonify({"updated": count, "message": "Koersen bijgewerkt"})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@main_bp.route("/api/search-tickers")
 @login_required(response="json")
 def api_search_tickers():
-    """Eigen fuzzy search met Yahoo fallback."""
-    query = request.args.get('q', '').strip()
-    if not query or len(query) < 1:
+    query = request.args.get("q", "").strip()
+    if not query:
         return jsonify([])
-    
-    # Eigen algoritme + Yahoo fallback
     results = search_tickers(query, supabase_client=supabase, limit=10, use_fallback=True)
     return jsonify(results)
 
-@main_bp.route('/api/refresh-ticker-index', methods=['POST'])
+
+@main_bp.route("/api/refresh-ticker-index", methods=["POST"])
 @login_required(response="json")
 def api_refresh_ticker_index():
-    """Optioneel: refresh ticker index."""
     try:
         count = refresh_ticker_index(supabase)
-        return jsonify({'count': count, 'message': f'Index ververst met {count} tickers'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"count": count, "message": f"Index ververst met {count} tickers"})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500

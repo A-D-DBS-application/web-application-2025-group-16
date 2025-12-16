@@ -1,5 +1,16 @@
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, DateTime, Date, ForeignKey, Text
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    Date,
+    ForeignKey,
+    Text,
+    PrimaryKeyConstraint,
+    func,
+    Boolean,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 import os
@@ -42,15 +53,22 @@ class Groep(Base):
     invite_code = Column(String, unique=True)
     owner_lid_id = Column(Integer, ForeignKey("Leden.ledenid"))
     created_at = Column(DateTime, default=datetime.utcnow)
+    portefeuille_id = Column(Integer)
+    instap_nav_pct = Column(Float, default=0.0)
+    instap_liq_pct = Column(Float, default=0.0)
+    uitstap_nav_pct = Column(Float, default=0.0)
+    uitstap_liq_pct = Column(Float, default=0.0)
+    liq_per_lid = Column(Boolean, default=False)
 
     owner = relationship("Leden")
 
 
 class GroepLeden(Base):
     __tablename__ = "groep_leden"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    groep_id = Column(Integer, ForeignKey("Groep.groep_id"))
-    ledenid = Column(Integer, ForeignKey("Leden.ledenid"))
+    __table_args__ = (PrimaryKeyConstraint("groep_id", "ledenid", name="groep_leden_pkey"),)
+
+    groep_id = Column(Integer, ForeignKey("Groep.groep_id"), nullable=False)
+    ledenid = Column(Integer, ForeignKey("Leden.ledenid"), nullable=False)
     rol = Column(String, default="member")
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -58,30 +76,46 @@ class GroepLeden(Base):
     leden = relationship("Leden")
 
 
+class Activa(Base):
+    __tablename__ = "activa"
+
+    ticker = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    sector = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    portfolio_positions = relationship("Portefeuille", back_populates="asset")
+
+
 class Portefeuille(Base):
     __tablename__ = "Portefeuille"
+
     port_id = Column(Integer, primary_key=True, autoincrement=True)
-    ticker = Column(String)
-    name = Column(String)
-    sector = Column(String)
+    ticker = Column(String, ForeignKey("activa.ticker"), nullable=False)
     quantity = Column(Float, default=0.0)
     avg_price = Column(Float, default=0.0)
-    current_price = Column(Float, default=0.0)
     groep_id = Column(Integer, ForeignKey("Groep.groep_id"), nullable=False)
     transactiekost = Column(Float, default=0.0)
+
+    asset = relationship("Activa", back_populates="portfolio_positions")
+    group = relationship("Groep")
 
 
 class Transacties(Base):
     __tablename__ = "Transacties"
+
     transactie_id = Column(Integer, primary_key=True, autoincrement=True)
     datum_tr = Column(Date, nullable=False)
     type = Column(String, nullable=False)
-    ticker = Column(String, nullable=False)
+    ticker = Column(String, ForeignKey("activa.ticker"), nullable=False)
     aantal = Column(Float, nullable=False)
     koers = Column(Float, nullable=False)
-    wisselkoers = Column(Float, nullable=False, default=1.0)
+    wisselkoers = Column(Float, nullable=True)
     munt = Column(String, nullable=False, default="EUR")
     portefeuille_id = Column(Integer, ForeignKey("Portefeuille.port_id"))
+
+    asset = relationship("Activa")
+    portfolio = relationship("Portefeuille")
 
 
 class Kas(Base):
@@ -108,8 +142,10 @@ class GroepAanvragen(Base):
 
 class Wisselkoersen(Base):
     __tablename__ = "Wisselkoersen"
+
     munt = Column(String, primary_key=True)
     wk = Column(Float, nullable=False)
+
 
 
 def init_db():
@@ -124,6 +160,7 @@ __all__ = [
     "Leden",
     "Groep",
     "GroepLeden",
+    "Activa",
     "Portefeuille",
     "Transacties",
     "Kas",

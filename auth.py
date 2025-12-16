@@ -1,8 +1,18 @@
 import logging
 from datetime import date, datetime
 from sqlalchemy.orm import Session
-from models import SessionLocal, Leden, Groep, GroepLeden, Portefeuille, Transacties, Kas, GroepAanvragen
-from market_data import get_latest_price, get_currency_rate
+from models import (
+    SessionLocal,
+    Leden,
+    Groep,
+    GroepLeden,
+    Portefeuille,
+    Transacties,
+    Kas,
+    GroepAanvragen,
+    Activa,
+)
+from market_data import get_latest_price, get_ticker_data
 
 # --- CONFIGURATIE ---
 # (Supabase client vervangen door SQLAlchemy SessionLocal)
@@ -23,12 +33,56 @@ TRANSACTION_TABLE = "Transacties"
 # Alle externe Yahoo/prijslogica is verplaatst naar market_data.py
 
 
+def _normalize_ticker(ticker: str | None) -> str:
+    return (ticker or "").strip().upper()
+
+
+def _asset_defaults_from_market(ticker: str) -> tuple[str, str | None]:
+    try:
+        info = get_ticker_data(ticker)
+        if info:
+            name = info.get("longName") or info.get("shortName") or ticker
+            sector = info.get("sector") or None
+            return name, sector
+    except Exception as exc:  # pragma: no cover - logging only
+        logging.warning(f"Kon metadata niet ophalen voor {ticker}: {exc}")
+    return ticker, None
+
+
+def _ensure_asset(session: Session, ticker: str, name: str | None = None, sector: str | None = None) -> Activa:
+    normalized = _normalize_ticker(ticker)
+    asset = session.query(Activa).filter(Activa.ticker == normalized).first()
+    if asset:
+        updated = False
+        if name and asset.name in (None, "", "ONBEKEND - Vul Naam In"):
+            asset.name = name
+            updated = True
+        if sector and (asset.sector in (None, "", "ONBEKEND - Vul Sector In")):
+            asset.sector = sector
+            updated = True
+        if updated:
+            session.flush()
+        return asset
+
+    default_name, default_sector = name, sector
+    if not default_name or not default_sector:
+        fetched_name, fetched_sector = _asset_defaults_from_market(normalized)
+        default_name = default_name or fetched_name
+        default_sector = default_sector or fetched_sector
+
+    asset = Activa(ticker=normalized, name=default_name or normalized, sector=default_sector)
+    session.add(asset)
+    session.flush()
+    return asset
+
+
 def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, exchange_rate=1.0, currency="EUR", datum_tr=None):
     """Logt een transactie in de Transacties tabel."""
     try:
-        if not portfolio_id and not ticker:
+        normalized_ticker = _normalize_ticker(ticker)
+        if not portfolio_id and not normalized_ticker:
             return False, "Portfolio ID of ticker vereist"
-        
+
         raw_date = (datum_tr or "").strip()
         dt_value = date.today()
         if raw_date:
@@ -42,14 +96,20 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
 
         session = SessionLocal()
         try:
+            _ensure_asset(session, normalized_ticker)
+
+            rate_value = float(exchange_rate or 1.0)
+            if rate_value <= 0:
+                rate_value = 1.0
+
             new_tx = Transacties(
-                aantal=amount,
-                ticker=ticker,
-                type=trade_type.upper(),
+                aantal=float(amount or 0),
+                ticker=normalized_ticker,
+                type=(trade_type or "").upper(),
                 portefeuille_id=portfolio_id,
-                koers=price,
-                wisselkoers=exchange_rate,
-                munt=currency,
+                koers=float(price or 0),
+                wisselkoers=rate_value,
+                munt=(currency or "EUR").upper(),
                 datum_tr=dt_value,
             )
             session.add(new_tx)
@@ -68,18 +128,6 @@ def log_portfolio_transaction(portfolio_id, ticker, trade_type, amount, price, e
         logging.error(f"Transactie log fout: {e}")
         return False, str(e)
 
-
-def _build_cash_payload(group_id, amount):
-    return {
-        "ticker": "CASH",
-        "name": "Cash",
-        "sector": "Cash",
-        "quantity": 0,
-        "avg_price": 0,
-        "current_price": amount,
-        "transactiekost": 0,
-        "groep_id": group_id,
-    }
 
 def sign_in_user(email):
     try:
@@ -143,6 +191,18 @@ def list_leden():
 
 def _normalize_group_row(row):
     if not row: return None
+    def _to_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    raw_liq = row.get("liq_per_lid")
+    if isinstance(raw_liq, str):
+        liq_per_lid = raw_liq.strip().lower() in ("true", "1", "t", "yes")
+    else:
+        liq_per_lid = bool(raw_liq)
+
     return {
         "id": row.get(GROUP_ID_COLUMN),
         "name": row.get(GROUP_NAME_COLUMN),
@@ -150,6 +210,12 @@ def _normalize_group_row(row):
         "invite_code": row.get(GROUP_CODE_COLUMN),
         "owner_id": row.get(GROUP_OWNER_COLUMN),
         "created_at": row.get("created_at"),
+        "portfolio_id": row.get("portefeuille_id"),
+        "instap_nav_pct": _to_float(row.get("instap_nav_pct")),
+        "instap_liq_pct": _to_float(row.get("instap_liq_pct")),
+        "uitstap_nav_pct": _to_float(row.get("uitstap_nav_pct")),
+        "uitstap_liq_pct": _to_float(row.get("uitstap_liq_pct")),
+        "liq_per_lid": liq_per_lid,
     }
 
 def _normalize_membership_row(row):
@@ -181,6 +247,12 @@ def create_group_record(owner_id, name, description, invite_code):
             "invite_code": new_group.invite_code,
             "owner_lid_id": new_group.owner_lid_id,
             "created_at": new_group.created_at,
+            "portefeuille_id": new_group.portefeuille_id,
+            "instap_nav_pct": new_group.instap_nav_pct,
+            "instap_liq_pct": new_group.instap_liq_pct,
+            "uitstap_nav_pct": new_group.uitstap_nav_pct,
+            "uitstap_liq_pct": new_group.uitstap_liq_pct,
+            "liq_per_lid": new_group.liq_per_lid,
         })
     except Exception as e:
         return False, str(e)
@@ -199,6 +271,12 @@ def get_group_by_code(invite_code):
             "invite_code": group.invite_code,
             "owner_lid_id": group.owner_lid_id,
             "created_at": group.created_at,
+            "portefeuille_id": group.portefeuille_id,
+            "instap_nav_pct": group.instap_nav_pct,
+            "instap_liq_pct": group.instap_liq_pct,
+            "uitstap_nav_pct": group.uitstap_nav_pct,
+            "uitstap_liq_pct": group.uitstap_liq_pct,
+            "liq_per_lid": group.liq_per_lid,
         })
     except Exception as e:
         return False, str(e)
@@ -217,6 +295,12 @@ def get_group_by_id(group_id):
             "invite_code": group.invite_code,
             "owner_lid_id": group.owner_lid_id,
             "created_at": group.created_at,
+            "portefeuille_id": group.portefeuille_id,
+            "instap_nav_pct": group.instap_nav_pct,
+            "instap_liq_pct": group.instap_liq_pct,
+            "uitstap_nav_pct": group.uitstap_nav_pct,
+            "uitstap_liq_pct": group.uitstap_liq_pct,
+            "liq_per_lid": group.liq_per_lid,
         })
     except Exception as e:
         return False, str(e)
@@ -364,33 +448,30 @@ def reject_group_request(req_id, host_id):
 def initialize_cash_position(group_id, amount=0.0):
     try:
         session = SessionLocal()
+        _ensure_asset(session, "CASH", "Contante Positie", "Liquiditeit")
         existing = session.query(Portefeuille).filter(
             Portefeuille.groep_id == group_id,
             Portefeuille.ticker == "CASH"
         ).first()
         
         if existing:
-            if existing.current_price is None:
-                existing.current_price = amount
+            if existing.quantity is None:
+                existing.quantity = float(amount or 0.0)
                 session.commit()
             session.close()
             return True, {
                 "port_id": existing.port_id,
                 "groep_id": existing.groep_id,
                 "ticker": existing.ticker,
-                "current_price": existing.current_price,
+                "cash_amount": float(existing.quantity or 0.0),
             }
         
-        payload = _build_cash_payload(group_id, amount)
         new_cash = Portefeuille(
             groep_id=group_id,
-            ticker=payload["ticker"],
-            name=payload["name"],
-            sector=payload["sector"],
-            quantity=payload["quantity"],
-            avg_price=payload["avg_price"],
-            current_price=payload["current_price"],
-            transactiekost=payload["transactiekost"],
+            ticker="CASH",
+            quantity=float(amount or 0.0),
+            avg_price=0.0,
+            transactiekost=0.0,
         )
         session.add(new_cash)
         session.commit()
@@ -399,7 +480,7 @@ def initialize_cash_position(group_id, amount=0.0):
             "port_id": new_cash.port_id,
             "groep_id": new_cash.groep_id,
             "ticker": new_cash.ticker,
-            "current_price": new_cash.current_price,
+            "cash_amount": float(new_cash.quantity or 0.0),
         }
     except Exception as e:
         return False, str(e)
@@ -587,40 +668,65 @@ def update_group_name(group_id: int, new_name: str):
         return False, str(e)
 
 
-def add_portfolio_position(group_id, ticker, quantity, price, user_id):
+def _serialize_portefeuille_row(position: Portefeuille, asset: Activa | None = None) -> dict:
+    asset_obj = asset or position.asset
+    return {
+        "port_id": position.port_id,
+        "ticker": position.ticker,
+        "quantity": float(position.quantity or 0),
+        "avg_price": float(position.avg_price or 0),
+        "groep_id": position.groep_id,
+        "transactiekost": float(position.transactiekost or 0),
+        "asset": {
+            "ticker": asset_obj.ticker if asset_obj else position.ticker,
+            "name": getattr(asset_obj, "name", None),
+            "sector": getattr(asset_obj, "sector", None),
+        },
+    }
+
+
+def add_portfolio_position(group_id, ticker, quantity, price, user_id, *, asset_name=None, asset_sector=None, transaction_cost=None):
     try:
-        quantity_int = int(float(quantity))
+        quantity_val = float(quantity or 0)
+        if quantity_val == 0:
+            return False, "Aantal moet groter dan 0 zijn"
+        price_val = float(price or 0)
+        normalized = _normalize_ticker(ticker)
         session = SessionLocal()
+        asset_meta = _ensure_asset(session, normalized, asset_name, asset_sector)
         existing = session.query(Portefeuille).filter(
             Portefeuille.groep_id == group_id,
-            Portefeuille.ticker == ticker
+            Portefeuille.ticker == normalized
         ).first()
         
         if existing:
             old_qty = float(existing.quantity or 0)
-            new_qty = int(old_qty) + quantity_int
+            new_qty = old_qty + quantity_val
             existing.quantity = new_qty
-            existing.avg_price = price
-            existing.current_price = price
+            if price_val:
+                existing.avg_price = price_val
+            if transaction_cost is not None:
+                existing.transactiekost = float(existing.transactiekost or 0) + float(transaction_cost or 0)
             session.commit()
-            logging.info(f"Updated {ticker}: Old Qty {old_qty} -> New Qty {new_qty}")
+            session.refresh(existing)
+            result = _serialize_portefeuille_row(existing, asset_meta)
+            logging.info(f"Updated {normalized}: Old Qty {old_qty} -> New Qty {new_qty}")
         else:
             new_pos = Portefeuille(
                 groep_id=group_id,
-                ticker=ticker,
-                name=ticker,
-                quantity=quantity_int,
-                avg_price=price,
-                current_price=price,
-                sector="Onbekend",
-                transactiekost=0,
+                ticker=normalized,
+                quantity=quantity_val,
+                avg_price=price_val,
+                transactiekost=float(transaction_cost or 0) if transaction_cost is not None else 0,
             )
             session.add(new_pos)
             session.commit()
-            logging.info(f"Inserted new position: {ticker}")
+            session.refresh(new_pos)
+            result = _serialize_portefeuille_row(new_pos, asset_meta)
+            logging.info(f"Inserted new position: {normalized}")
         
         session.close()
-        return True, "Succes"
+        return True, result
     except Exception as e:
         logging.error(f"Fout bij opslaan {ticker}: {e}")
         return False, str(e)
@@ -636,44 +742,24 @@ def koersen_updater(group_id):
             return True, "Geen posities om te updaten."
 
         updated_count = 0
+        failed = []
         for pos in positions:
-            ticker = (pos.ticker or '').upper()
+            ticker = _normalize_ticker(pos.ticker)
             if not ticker or ticker == 'CASH':
                 continue
 
             # Haal laatste koers via market_data
             current_price = get_latest_price(ticker)
 
-            # Munt bepalen op basis van laatste transactie
-            currency = None
-            try:
-                tx = session.query(Transacties).filter(Transacties.ticker == ticker).order_by(Transacties.transactie_id.desc()).first()
-                if tx:
-                    currency = (tx.munt or "").upper() or None
-            except Exception:
-                currency = None
-
-            # FX rate (voor info, niet in DB geschreven)
-            fx_rate = None
-            if currency and currency != "EUR":
-                try:
-                    fx_rate = get_currency_rate(currency)
-                except Exception as e:
-                    logging.warning(f"FX fetch fout voor {ticker} ({currency}): {e}")
-            elif currency == "EUR":
-                fx_rate = 1.0
-
-            # Update positie
             if current_price is not None:
-                try:
-                    pos.current_price = float(current_price)
-                    session.commit()
-                    updated_count += 1
-                except Exception as e:
-                    logging.error(f"DB update fout voor {ticker}: {e}")
+                updated_count += 1
+            else:
+                failed.append(ticker)
 
         session.close()
-        return True, f"{updated_count} koersen succesvol bijgewerkt."
+        if failed:
+            return True, f"Laatste koersen opgehaald voor {updated_count} tickers; {len(failed)} tickers mislukt."
+        return True, f"Laatste koersen opgehaald voor {updated_count} tickers."
 
     except Exception as e:
         return False, f"Fout bij updaten koersen: {str(e)}"

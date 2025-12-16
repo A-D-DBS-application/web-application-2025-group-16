@@ -1,6 +1,9 @@
+from datetime import date
+
 from flask import Blueprint, render_template, request, jsonify, session
 from sqlalchemy import desc, asc
-from models import SessionLocal, Transacties, Portefeuille, Wisselkoersen
+from models import SessionLocal, Transacties, Portefeuille, Wisselkoersen, Activa
+from market_data import get_latest_price, get_currency_rate
 from auth import log_portfolio_transaction, get_membership_for_user_in_group
 
 transacties_bp = Blueprint("transacties", __name__)
@@ -87,19 +90,37 @@ def _safe_wk(wk_value):
     return wk if wk > 0 else 1.0
 
 
-def _get_current_wk_from_table(db) -> dict:
-    """
-    Haal alle actuele wisselkoersen op uit de Wisselkoersen tabel.
-    """
+def _lookup_rate(db, cache: dict, currency: str | None) -> float:
+    code = (currency or 'EUR').upper()
+    if code == 'EUR':
+        return 1.0
+    if code in cache:
+        return cache[code]
+    rate = None
+    try:
+        row = db.query(Wisselkoersen).filter(Wisselkoersen.munt == code).first()
+        if row:
+            rate = _safe_wk(row.wk)
+    except Exception:
+        db.rollback()
+    if rate is None:
+        fallback = get_currency_rate(code)
+        rate = _safe_wk(fallback) if fallback else 1.0
+    cache[code] = rate
+    return rate
+
+
+def _get_current_wk_from_table(db, as_of: date | None = None) -> dict:
+    """Haal de actuele wisselkoersen uit de Wisselkoersen-tabel (zonder datum)."""
     wk_map = {'EUR': 1.0}
     try:
         rows = db.query(Wisselkoersen).all()
         for row in rows:
-            munt = (row.munt or '').upper()
-            if munt:
-                wk_map[munt] = _safe_wk(row.wk)
+            code = (row.munt or '').upper()
+            if code:
+                wk_map[code] = _safe_wk(row.wk)
     except Exception:
-        pass
+        db.rollback()
     return wk_map
 
 
@@ -166,6 +187,7 @@ def _calculate_realized_profit_fifo(db, port_ids: list) -> dict:
     )
     
     fifo_queues = {}
+    rate_cache = {}
     overall_realized = 0.0
     total_dividends = 0.0
     total_fees = 0.0
@@ -186,7 +208,8 @@ def _calculate_realized_profit_fifo(db, port_ids: list) -> dict:
             
             qty = _safe_float(row.aantal)
             price_local = _safe_float(row.koers)
-            wk = _safe_wk(row.wisselkoers)
+            stored_rate = _safe_float(getattr(row, "wisselkoers", None), 0.0)
+            wk = stored_rate if stored_rate > 0 else _lookup_rate(db, rate_cache, row.munt)
             
             queue_key = (pid, ticker)
             fifo_queues.setdefault(queue_key, [])
@@ -299,92 +322,75 @@ def api_portfolio_summary(group_id: int):
 
     db = SessionLocal()
     try:
-        # Haal alle posities op
         positions = db.query(Portefeuille).filter(Portefeuille.groep_id == group_id).all()
         port_ids = [p.port_id for p in positions]
-        
-        # Haal ACTUELE wisselkoersen uit Wisselkoersen tabel
+
         current_wk_map = _get_current_wk_from_table(db)
-        
-        # Haal munt per positie uit EERSTE BUY transactie
         currency_map = _get_position_currency_from_buy(db, port_ids)
-        
-        # Bereken gerealiseerde winst
         realized_data = _calculate_realized_profit_fifo(db, port_ids)
-        
-        # Verwerk posities
+
         cash_amount = 0.0
         total_value = 0.0
         total_cost = 0.0
         total_unrealized = 0.0
         sectors = {}
         position_list = []
-        
+        price_cache = {}
+
         for pos in positions:
-            ticker = (pos.ticker or "").upper()
-            
-            if ticker == "CASH":
-                cash_amount = _safe_float(pos.current_price)
+            ticker = (pos.ticker or '').upper()
+            if ticker == 'CASH':
+                cash_amount = _safe_float(pos.quantity)
                 continue
-            
+
             qty = _safe_float(pos.quantity)
             if qty <= 0:
                 continue
-            
-            # Haal munt uit eerste BUY transactie
+
             munt = currency_map.get(pos.port_id, 'EUR')
-            
-            # Huidige prijs uit Portefeuille (in lokale valuta)
-            current_price = _safe_float(pos.current_price)
-            
-            # Wisselkoers: actuele uit Wisselkoersen tabel
-            if munt == 'EUR':
-                wk = 1.0
-            else:
-                wk = current_wk_map.get(munt, 1.0)
-            
-            # Kostprijzen uit Portefeuille (al in EUR)
+            wk = 1.0 if munt == 'EUR' else current_wk_map.get(munt, 1.0)
+
+            if ticker not in price_cache:
+                fetched_price = get_latest_price(ticker)
+                price_cache[ticker] = _safe_float(fetched_price)
+            current_price_local = price_cache[ticker]
+
+            current_price_eur = current_price_local / wk if wk > 0 else current_price_local
+            current_value_eur = qty * current_price_eur
+
             avg_price_eur = _safe_float(pos.avg_price)
             fees_eur = _safe_float(pos.transactiekost)
-            
-            # Berekeningen
-            current_value_eur = (qty * current_price) / wk if wk > 0 else qty * current_price
-            price_eur = current_price / wk if wk > 0 else current_price
-            
             cost_basis_eur = (qty * avg_price_eur) + fees_eur
             unrealized = current_value_eur - cost_basis_eur
             unrealized_pct = (unrealized / cost_basis_eur * 100) if cost_basis_eur > 0 else 0
-            
-            # Totalen
+
             total_value += current_value_eur
             total_cost += cost_basis_eur
             total_unrealized += unrealized
-            
-            # Sector allocatie
-            sector = pos.sector or "Overig"
+
+            asset = getattr(pos, "asset", None)
+            sector = (asset.sector if asset and asset.sector else "Overig")
             sectors[sector] = sectors.get(sector, 0) + current_value_eur
-            
-            # Positie voor frontend
+
             position_list.append({
                 "port_id": pos.port_id,
                 "ticker": ticker,
-                "name": pos.name or "",
+                "name": asset.name if asset and asset.name else ticker,
                 "sector": sector,
                 "munt": munt,
                 "quantity": qty,
-                "current_price_local": round(current_price, 2),
-                "current_price_eur": round(price_eur, 2),
+                "current_price_local": round(current_price_local, 2),
+                "current_price_eur": round(current_price_eur, 2),
                 "wisselkoers": round(wk, 4),
                 "value_eur": round(current_value_eur, 2),
                 "cost_basis_eur": round(cost_basis_eur, 2),
                 "unrealized": round(unrealized, 2),
                 "unrealized_pct": round(unrealized_pct, 2)
             })
-        
-        # Totaal rendement
+
         total_return = realized_data["total"] + total_unrealized
         return_pct = (total_return / total_cost * 100) if total_cost > 0 else 0
-        
+
         return jsonify({
             "positions": position_list,
             "cash": round(cash_amount, 2),
@@ -398,12 +404,12 @@ def api_portfolio_summary(group_id: int):
                 "realized": realized_data["total"],
                 "dividends": realized_data["dividends"],
                 "fees": realized_data["fees"],
-                "sell_count": realized_data["sell_count"]
+                "sell_count": realized_data["sell_count"],
             },
             "sectors": {k: round(v, 2) for k, v in sectors.items()},
-            "position_count": len(position_list)
+            "position_count": len(position_list),
         })
-        
+
     except Exception as e:
         import traceback
         return jsonify({
@@ -425,35 +431,45 @@ def api_debug_portfolio(group_id: int):
         positions = db.query(Portefeuille).filter(Portefeuille.groep_id == group_id).all()
         pos_data = []
         for p in positions:
+            asset = getattr(p, "asset", None)
             pos_data.append({
                 "port_id": p.port_id,
                 "ticker": p.ticker,
                 "quantity": p.quantity,
                 "avg_price": p.avg_price,
-                "current_price": p.current_price,
                 "transactiekost": p.transactiekost,
-                "sector": p.sector
+                "asset_name": asset.name if asset else None,
+                "asset_sector": asset.sector if asset else None,
             })
         
         port_ids = [p.port_id for p in positions]
         txs = []
         if port_ids:
+            rate_cache = {}
             tx_rows = db.query(Transacties).filter(Transacties.portefeuille_id.in_(port_ids)).order_by(desc(Transacties.datum_tr)).limit(20).all()
             for t in tx_rows:
+                fx_rate = _lookup_rate(db, rate_cache, t.munt)
                 txs.append({
                     "id": t.transactie_id,
                     "type": t.type,
                     "ticker": t.ticker,
                     "aantal": t.aantal,
                     "koers": t.koers,
-                    "wisselkoers": t.wisselkoers,
                     "munt": t.munt,
                     "datum": str(t.datum_tr),
-                    "port_id": t.portefeuille_id
+                    "port_id": t.portefeuille_id,
+                    "fx_rate": fx_rate,
                 })
         
         wk_rows = db.query(Wisselkoersen).all()
-        wk_data = {r.munt: r.wk for r in wk_rows}
+        wk_data = [
+            {
+                "munt": row.munt,
+                "datum": row.datum.isoformat() if row.datum else None,
+                "wk": row.wk,
+            }
+            for row in wk_rows
+        ]
         
         # Extra: toon welke munt per positie wordt gedetecteerd
         currency_map = _get_position_currency_from_buy(db, port_ids)

@@ -713,18 +713,11 @@
             const resp = await fetch('/api/dashboard-snapshot');
             const data = await resp.json();
             if (!resp.ok) return;
-            const wkMap = data.wk || {};
-            if (Array.isArray(data.positions)) {
-                currentPortfolio = data.positions.map(p => {
-                    const cur = String(p.munt || p.currency || 'EUR').toUpperCase();
-                    const rate = typeof wkMap[cur] !== 'undefined' ? Number(wkMap[cur]) : (cur === 'EUR' ? 1 : undefined);
-                    if (rate && isFinite(rate)) p.wisselkoers = rate;
-                    return p;
-                });
-            }
-            if (typeof renderDashboard === 'function') {
-                renderDashboard(currentPortfolio || []);
-            }
+
+            const cashValue = Number(data.cash_balance || data.cash || 0) || 0;
+            lastCashRow = lastCashRow || { current_price: 0 };
+            lastCashRow.current_price = cashValue;
+            updateCashCard(cashValue);
         } catch (e) {
             console.warn('Snapshot fetch fout', e);
         }
@@ -1710,33 +1703,47 @@
         }
 
         const priceNow = tradePrice;
-        const positionName = lastQuote?.longName || lastQuote?.shortName || symbol;
-        const sector = lastQuote?.sector || 'Onbekend';
-
         setFormStatus('Opslaan...', 'info');
-        const { data: existingRows, error: existErr } = await supabase
-            .from('Portefeuille')
-            .select('port_id, quantity, avg_price, transactiekost')
-            .eq('groep_id', ACTIVE_GROUP_ID)
-            .eq('ticker', symbol)
-            .limit(1);
-        if (existErr) {
-            setFormStatus(existErr.message || 'Controle op bestaande positie mislukt', 'error');
+
+        let existingRows = null;
+        let fallbackError = null;
+        let holding = findCurrentHolding(symbol);
+        if (!holding) {
+            const { data: rows, error: existErr } = await supabase
+                .from('Portefeuille')
+                .select('port_id, quantity, avg_price, transactiekost')
+                .eq('groep_id', ACTIVE_GROUP_ID)
+                .eq('ticker', symbol)
+                .order('port_id', { ascending: false })
+                .limit(1);
+            fallbackError = existErr;
+            existingRows = rows;
+            if (rows && rows.length) {
+                holding = {
+                    port_id: rows[0].port_id,
+                    quantity: rows[0].quantity,
+                    avg_price: rows[0].avg_price,
+                    transactiekost: rows[0].transactiekost,
+                };
+            }
+        }
+
+        if (!holding && fallbackError) {
+            setFormStatus(fallbackError.message || 'Controle op bestaande positie mislukt', 'error');
             return;
         }
 
         let insertedPortId = null;
         if (t === 'DIVIDEND') {
-            if (!existingRows || existingRows.length === 0) {
+            if (!holding) {
                 setFormStatus('Geen bestaande positie voor dit dividend.', 'error');
                 return;
             }
-            insertedPortId = existingRows[0].port_id;
-        } else if (t === 'BUY' && existingRows && existingRows.length > 0) {
-            const existing = existingRows[0];
-            const prevQty = Number(existing.quantity) || 0;
-            const prevAvg = Number(existing.avg_price) || 0;
-            const prevFee = Number(existing.transactiekost) || 0;
+            insertedPortId = holding.port_id;
+        } else if (t === 'BUY' && holding) {
+            const prevQty = Number(holding.quantity) || 0;
+            const prevAvg = Number(holding.avg_price) || 0;
+            const prevFee = Number(holding.transactiekost) || 0;
             const newQty = prevQty + qty;
             if (newQty <= 0) {
                 setFormStatus('Aantal moet groter dan 0 zijn', 'error');
@@ -1750,80 +1757,98 @@
                 .update({
                     quantity: newQty,
                     avg_price: newAvg,
-                    current_price: priceNow,
-                    sector: sector,
-                    name: positionName,
                     transactiekost: newFee
                 })
                 .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('port_id', existing.port_id);
+                .eq('port_id', holding.port_id);
             if (updError) {
                 setFormStatus(updError.message || 'Bijwerken bestaande positie mislukt', 'error');
                 return;
             }
-            insertedPortId = existing.port_id;
+            insertedPortId = holding.port_id;
         } else if (t === 'BUY') {
             const payload = {
-                groep_id: ACTIVE_GROUP_ID,
                 ticker: symbol,
-                name: positionName,
                 quantity: qty,
                 avg_price: priceEur,
-                current_price: priceNow,
-                sector: sector,
-                transactiekost: feeAmountEur
+                transactiekost: feeAmountEur,
+                name: lastQuote?.longName || lastQuote?.shortName || null,
+                sector: lastQuote?.sector || null,
+                currency: selectedCurrency
             };
-            const { data: insertData, error } = await supabase.from('Portefeuille').insert([payload]).select();
-            if (error) {
-                setFormStatus(error.message || 'Opslaan mislukt', 'error');
+            let response;
+            let result = {};
+            try {
+                response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/portfolio/positions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+                try {
+                    result = await response.json();
+                } catch (_) {
+                    result = {};
+                }
+            } catch (networkError) {
+                setFormStatus(networkError.message || 'Opslaan mislukt', 'error');
                 return;
             }
-            insertedPortId = insertData?.[0]?.port_id || insertData?.[0]?.id || null;
+            if (!response?.ok) {
+                setFormStatus(result?.error || 'Opslaan mislukt', 'error');
+                return;
+            }
+            const created = result?.position || {};
+            insertedPortId = created.port_id || null;
+            if (!holding) {
+                holding = {
+                    port_id: insertedPortId,
+                    quantity: created.quantity ?? qty,
+                    avg_price: created.avg_price ?? priceEur,
+                    transactiekost: created.transactiekost ?? feeAmountEur
+                };
+            }
         } else if (t === 'SELL' || t === 'PAYOUT') {
-            if (!existingRows || existingRows.length === 0) {
+            if (!holding) {
                 setFormStatus('Geen bestaande positie om te verkopen', 'error');
                 return;
             }
-            const existing = existingRows[0];
-            const prevQty = Number(existing.quantity) || 0;
+            const prevQty = Number(holding.quantity) || 0;
             if (qty > prevQty) {
                 setFormStatus('Niet genoeg aandelen om te verkopen.', 'error');
                 return;
             }
             const newQty = prevQty - qty;
-            const prevFee = Number(existing.transactiekost) || 0;
+            const prevFee = Number(holding.transactiekost) || 0;
             const newFee = prevFee + feeAmount;
             const { error: updSellErr } = await supabase
                 .from('Portefeuille')
                 .update({
                     quantity: newQty,
-                    current_price: priceNow,
                     transactiekost: newFee
                 })
                 .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('port_id', existing.port_id);
+                .eq('port_id', holding.port_id);
             if (updSellErr) {
                 setFormStatus(updSellErr.message || 'Bijwerken positie (verkoop) mislukt', 'error');
                 return;
             }
-            insertedPortId = existing.port_id;
+            insertedPortId = holding.port_id;
         }
 
         const nextCash = t === 'BUY' ? (cashAvailable - totalEur) : (cashAvailable + totalEur);
         const cashUpdateOk = await updateCashBalance(nextCash);
         if (!cashUpdateOk) {
-            if (existingRows && existingRows.length > 0) {
-                const existing = existingRows[0];
+            if (holding) {
                 await supabase
                     .from('Portefeuille')
                     .update({
-                        quantity: existing.quantity,
-                        avg_price: existing.avg_price,
-                        current_price: priceNow,
-                        transactiekost: existing.transactiekost
+                        quantity: holding.quantity,
+                        avg_price: holding.avg_price,
+                        transactiekost: holding.transactiekost
                     })
                     .eq('groep_id', ACTIVE_GROUP_ID)
-                    .eq('port_id', existing.port_id);
+                    .eq('port_id', holding.port_id);
             } else if (insertedPortId) {
                 await supabase
                     .from('Portefeuille')
@@ -1831,6 +1856,17 @@
                     .eq('groep_id', ACTIVE_GROUP_ID)
                     .eq('port_id', insertedPortId);
             }
+            try {
+                await fetch('/api/cash/set_balance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ amount: cashAvailable })
+                });
+            } catch (_) { }
+            if (!lastCashRow) lastCashRow = {};
+            lastCashRow.current_price = cashAvailable;
+            updateCashCard(cashAvailable);
             setFormStatus('Cash bijwerken mislukt. Probeer opnieuw.', 'error');
             return;
         }
@@ -1994,16 +2030,30 @@
     }
 
     async function updateCashBalance(nextAmount) {
-        const { error } = await supabase
-            .from('Portefeuille')
-            .update({ current_price: nextAmount })
-            .eq('groep_id', ACTIVE_GROUP_ID)
-            .eq('ticker', 'CASH');
-        if (error) {
+        try {
+            const response = await fetch('/api/cash/set_balance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount: nextAmount })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.error || 'Cash bijwerken mislukt');
+            }
+            const balance = Number(data?.balance ?? nextAmount);
+            if (!Number.isFinite(balance)) {
+                throw new Error('Ongeldige cash waarde ontvangen');
+            }
+            if (!lastCashRow) lastCashRow = {};
+            lastCashRow.current_price = balance;
+            if (data?.port_id) lastCashRow.port_id = data.port_id;
+            updateCashCard(balance);
+            return true;
+        } catch (error) {
             console.error('Cash update mislukt', error);
             return false;
         }
-        return true;
     }
 
     function handleTableAction(event) {
@@ -2149,7 +2199,6 @@
                 .update({
                     quantity: newQty,
                     avg_price: newAvg,
-                    current_price: price,
                     transactiekost: newFeeTotal
                 })
                 .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2162,7 +2211,7 @@
         const newCash = cashAvailable - totalCost;
         const { error: cashError } = await supabase
             .from('Portefeuille')
-            .update({ current_price: newCash })
+            .update({ quantity: newCash })
             .eq('groep_id', ACTIVE_GROUP_ID)
             .eq('ticker', 'CASH');
 
@@ -2201,7 +2250,6 @@
                     .from('Portefeuille')
                     .update({
                         quantity: newQty,
-                        current_price: price,
                         transactiekost: newFeeTotal
                     })
                     .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2215,7 +2263,6 @@
                     .from('Portefeuille')
                     .update({
                         quantity: 0,
-                        current_price: price,
                         transactiekost: newFeeTotal
                     })
                     .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2229,7 +2276,7 @@
         const newCash = cashCurrent + proceeds;
         const { error: cashError } = await supabase
             .from('Portefeuille')
-            .update({ current_price: newCash })
+            .update({ quantity: newCash })
             .eq('groep_id', ACTIVE_GROUP_ID)
             .eq('ticker', 'CASH');
         if (cashError) {
@@ -2298,11 +2345,8 @@
             }
             const payload = {
                 ticker: "CASH",
-                name: "Cash",
-                sector: "Cash",
                 quantity: 0,
                 avg_price: 0,
-                current_price: 0,
                 transactiekost: 0,
                 groep_id: ACTIVE_GROUP_ID
             };
@@ -2315,7 +2359,7 @@
             }
 
             if (data && data[0]) {
-                lastCashRow = data[0];
+                lastCashRow = { ...data[0], current_price: data[0].quantity };
                 return true;
             }
             return false;
@@ -2358,7 +2402,11 @@
             console.error('Cash ophalen mislukt', error);
             return null;
         }
-        return data?.[0] || null;
+        const row = data?.[0] || null;
+        if (row) {
+            return { ...row, current_price: row.quantity };
+        }
+        return null;
     }
 
     fetchPortfolio();
