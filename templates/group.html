@@ -132,6 +132,9 @@
                         <div>
                             <p class="font-semibold text-slate-900">{{ member.volledige_naam }}</p>
                             <p class="text-sm text-slate-500">{{ member.email }}</p>
+                            {% if is_owner and member.gsm %}
+                            <p class="text-sm text-slate-500">{{ member.gsm }}</p>
+                            {% endif %}
                         </div>
 
                         <div class="flex items-center gap-3">
