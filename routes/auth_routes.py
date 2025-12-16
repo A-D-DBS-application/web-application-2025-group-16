@@ -26,7 +26,7 @@ def register():
         achternaam = request.form.get("achternaam", "").strip()
         gsm_raw = request.form.get("gsm", "").strip()
         digits = "".join(ch for ch in gsm_raw if ch.isdigit())
-        gsm = int(digits) if digits else 0
+        gsm = digits if digits else ""
         
         ok, res = sign_up_user(email, voornaam, achternaam, gsm)
         if ok: return redirect(url_for("auth.login"))
