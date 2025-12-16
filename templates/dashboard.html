@@ -1972,6 +1972,21 @@
             setFormStatus('Bedrag moet groter dan 0 zijn', 'error');
             return;
         }
+        const targetLabel = target === 'kas' ? 'Kas' : 'Portefeuille cash';
+        const directionLabel = direction === 'in' ? 'Storting (+)' : 'Opname (-)';
+        const dateValue = transactionDateInput?.value || '—';
+        const overview = [
+            `Transactietype: Overschrijving`,
+            `Doel: ${targetLabel}`,
+            `Richting: ${directionLabel}`,
+            `Bedrag: ${eur.format(rawAmount)}`,
+            `Transactiedatum: ${dateValue}`
+        ].join('\n');
+        const confirmed = window.confirm(`${overview}\n\nBen je zeker dat je deze overschrijving wil opslaan?`);
+        if (!confirmed) {
+            setFormStatus('Opslaan geannuleerd', 'info');
+            return;
+        }
         setFormStatus('Cash bijwerken...', 'info');
         try {
             const transfer = await postCashTransfer({

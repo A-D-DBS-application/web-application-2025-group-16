@@ -78,11 +78,30 @@ def cashbox():
 @login_required(response="json")
 @with_group_context(response="json", require_active=True)
 def api_dashboard_snapshot():
+    gid = g.group_snapshot["id"]
+    session = None
     try:
-        ok, bal = get_cash_balance_for_group(g.group_snapshot["id"])
-        return jsonify({"group": g.group_snapshot, "cash_balance": bal or 0.0})
+        session = SessionLocal()
+        cash_row = (
+            session.query(Portefeuille)
+            .filter(Portefeuille.groep_id == gid, Portefeuille.ticker == "CASH")
+            .first()
+        )
+        portfolio_cash = float(cash_row.quantity or 0.0) if cash_row else 0.0
+
+        ok_kas, kas_balance = get_cash_balance_for_group(gid)
+        kas_value = kas_balance if ok_kas else None
+
+        return jsonify({
+            "group": g.group_snapshot,
+            "cash_balance": portfolio_cash,
+            "kas_balance": kas_value,
+        })
     except Exception as exc:  # pragma: no cover
         return jsonify({"error": str(exc)}), 500
+    finally:
+        if session is not None:
+            session.close()
 
 
 @main_bp.route("/api/cash/transfer", methods=["POST"])
