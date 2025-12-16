@@ -385,6 +385,43 @@ def create_group_request(group_id, ledenid, type):
     except Exception as e:
         return False, str(e)
 
+def list_pending_leave_requests_for_user(ledenid):
+    try:
+        session = SessionLocal()
+        pending = (
+            session.query(GroepAanvragen)
+            .filter(
+                GroepAanvragen.ledenid == ledenid,
+                GroepAanvragen.type == "leave",
+                GroepAanvragen.status == "pending",
+            )
+            .order_by(GroepAanvragen.created_at.asc())
+            .all()
+        )
+        session.close()
+
+        group_ids = [req.groep_id for req in pending]
+        ok_groups, groups = list_groups_by_ids(group_ids)
+        group_map = {g.get("id"): g for g in (groups or [])} if ok_groups else {}
+
+        normalized = []
+        for req in pending:
+            group_meta = group_map.get(req.groep_id, {})
+            normalized.append(
+                {
+                    "id": req.id,
+                    "group_id": req.groep_id,
+                    "group_name": group_meta.get("name") or group_meta.get("groep_naam"),
+                    "status": req.status,
+                    "type": req.type,
+                    "created_at": req.created_at.isoformat() if req.created_at else None,
+                }
+            )
+
+        return True, normalized
+    except Exception as e:
+        return False, str(e)
+
 def list_group_requests_for_group(group_id):
     try:
         session = SessionLocal()
@@ -504,10 +541,11 @@ def list_group_members(group_id):
         return False, str(e)
 
 def add_cash_transaction(group_id: int, amount: float, direction: str, description: str | None, created_by: int | None = None):
+    session = None
     try:
         if direction not in ("in", "out"):
             return False, "Ongeldig type"
-        
+
         session = SessionLocal()
         new_tx = Kas(
             groep_id=group_id,
@@ -517,16 +555,22 @@ def add_cash_transaction(group_id: int, amount: float, direction: str, descripti
             created_by=created_by,
         )
         session.add(new_tx)
-        session.commit()
-        session.close()
-        return True, {
+        session.flush()
+        result = {
             "kas_id": new_tx.kas_id,
             "groep_id": new_tx.groep_id,
-            "amount": new_tx.amount,
+            "amount": float(new_tx.amount or 0),
             "type": new_tx.type,
         }
+        session.commit()
+        return True, result
     except Exception as e:
+        if session is not None:
+            session.rollback()
         return False, str(e)
+    finally:
+        if session is not None:
+            session.close()
 
 def list_cash_transactions_for_group(group_id: int, limit: int | None = 200):
     try:

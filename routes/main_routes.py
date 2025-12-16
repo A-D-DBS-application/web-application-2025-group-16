@@ -17,6 +17,7 @@ from auth import (
     list_cash_transactions_for_group,
     list_leden,
     log_portfolio_transaction,
+    list_pending_leave_requests_for_user,
 )
 from fuzzy_search import refresh_ticker_index, search_tickers
 from market_data import get_ticker_data, sync_exchange_rates_to_db
@@ -31,7 +32,41 @@ main_bp = Blueprint("main", __name__)
 @login_required()
 @with_group_context()
 def home():
-    return render_template("home.html", group_snapshot=g.group_snapshot, user_groups=g.user_groups)
+    user_groups = list(g.user_groups or [])
+    pending_leave_groups = []
+
+    user_id = getattr(g, "user_id", None)
+    if user_id:
+        ok_pending, pending = list_pending_leave_requests_for_user(user_id)
+        if ok_pending and pending:
+            pending_leave_groups = []
+            pending_ids = set()
+            for item in pending:
+                gid = item.get("group_id")
+                if gid is None:
+                    continue
+                try:
+                    gid_int = int(gid)
+                except (TypeError, ValueError):
+                    gid_int = gid
+                item["group_id"] = gid_int
+                pending_ids.add(gid_int)
+                pending_leave_groups.append(item)
+
+            if pending_ids:
+                pending_ids_str = {str(pid) for pid in pending_ids}
+                user_groups = [
+                    grp
+                    for grp in user_groups
+                    if grp.get("id") not in pending_ids and str(grp.get("id")) not in pending_ids_str
+                ]
+
+    return render_template(
+        "home.html",
+        group_snapshot=g.group_snapshot,
+        user_groups=user_groups,
+        pending_leave_groups=pending_leave_groups,
+    )
 
 
 @main_bp.route("/portfolio")

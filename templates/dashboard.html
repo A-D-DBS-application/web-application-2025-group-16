@@ -216,6 +216,10 @@
 
         </div>
         <div id="cash-section" class="hidden space-y-4">
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400 font-semibold">Status</p>
+                <p id="cash-transfer-status" class="text-sm text-slate-600 mt-1">Laden...</p>
+            </div>
             <div class="grid md:grid-cols-3 gap-4">
                 <div>
                     <label class="form-label">Doel</label>
@@ -506,6 +510,7 @@
     const cashTransferAmount = document.getElementById('cash-transfer-amount');
     const cashTransferDescription = document.getElementById('cash-transfer-description');
     const cashTransferDescriptionRow = document.getElementById('cash-transfer-description-row');
+    const cashTransferStatus = document.getElementById('cash-transfer-status');
     const tradeModal = document.getElementById('trade-modal');
     const tradeForm = document.getElementById('trade-form');
     const tradeTitle = document.getElementById('trade-modal-title');
@@ -529,6 +534,7 @@
     let lastCashRow = null;
     let tradeContext = null;
     let currentPortfolio = [];
+    let latestKasBalance = null;
 
     if (lookupBtn) lookupBtn.addEventListener('click', handleLookup);
     if (positionForm) positionForm.addEventListener('submit', handlePositionSubmit);
@@ -717,7 +723,10 @@
             const cashValue = Number(data.cash_balance || data.cash || 0) || 0;
             lastCashRow = lastCashRow || { current_price: 0 };
             lastCashRow.current_price = cashValue;
+            const kasValue = Number(data.kas_balance);
+            latestKasBalance = Number.isFinite(kasValue) ? kasValue : latestKasBalance;
             updateCashCard(cashValue);
+            updateTransferStatus();
         } catch (e) {
             console.warn('Snapshot fetch fout', e);
         }
@@ -917,6 +926,7 @@
             if (lookupBtn) lookupBtn.classList.add('hidden');
             if (tickerInput) tickerInput.value = 'CASH';
             setFormStatus('Cash verplaatsen: kies richting, doel en bedrag.', 'info');
+            updateTransferStatus({ mode: 'idle' });
         } else {
             buySection?.classList.add('hidden');
             if (txnPlaceholder) {
@@ -1963,6 +1973,7 @@
     async function processCashTransfer() {
         if (!IS_HOST) {
             setFormStatus('Alleen hosts kunnen cash verplaatsen', 'error');
+            updateTransferStatus({ mode: 'error', message: 'Geen rechten om op te slaan' });
             return;
         }
         const direction = (cashTransferDirection?.value === 'out') ? 'out' : 'in';
@@ -1970,6 +1981,7 @@
         const rawAmount = parseFloat(cashTransferAmount?.value || '0');
         if (!rawAmount || rawAmount <= 0) {
             setFormStatus('Bedrag moet groter dan 0 zijn', 'error');
+            updateTransferStatus({ mode: 'error', message: 'Bedrag moet groter dan 0 zijn' });
             return;
         }
         const targetLabel = target === 'kas' ? 'Kas' : 'Portefeuille cash';
@@ -1985,9 +1997,11 @@
         const confirmed = window.confirm(`${overview}\n\nBen je zeker dat je deze overschrijving wil opslaan?`);
         if (!confirmed) {
             setFormStatus('Opslaan geannuleerd', 'info');
+            updateTransferStatus({ mode: 'idle' });
             return;
         }
         setFormStatus('Cash bijwerken...', 'info');
+        updateTransferStatus({ mode: 'saving' });
         try {
             const transfer = await postCashTransfer({
                 amount: rawAmount,
@@ -2005,19 +2019,29 @@
                 }
                 updateCashCard(next);
                 setFormStatus(direction === 'in' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
+                updateTransferStatus({
+                    mode: 'success',
+                    message: direction === 'in' ? 'Storting opgeslagen' : 'Opname opgeslagen'
+                });
                 await fetchPortfolio();
             } else {
                 const kasNextRaw = Number(transfer.kas_balance);
                 const kasNext = Number.isFinite(kasNextRaw) ? kasNextRaw : 0;
                 const kasLabel = Number.isFinite(kasNextRaw) ? kasNext.toFixed(2) : 'Onbekend';
+                latestKasBalance = Number.isFinite(kasNextRaw) ? kasNext : latestKasBalance;
                 setFormStatus(direction === 'in' ? 'Kas aangevuld' : 'Kas opname geregistreerd', 'success');
                 showToast(`Kas bijgewerkt. Nieuw saldo: € ${kasLabel}`, 'success', 2800);
+                updateTransferStatus({
+                    mode: 'success',
+                    message: direction === 'in' ? 'Kasstorting opgeslagen' : 'Kasopname opgeslagen'
+                });
             }
             if (cashTransferAmount) cashTransferAmount.value = '';
             if (cashTransferDescription) cashTransferDescription.value = '';
         } catch (err) {
             console.error('Cash transfer mislukt', err);
             setFormStatus(err.message || 'Cash bijwerken mislukt', 'error');
+            updateTransferStatus({ mode: 'error', message: err.message || 'Opslaan mislukt' });
         }
     }
 
@@ -2348,6 +2372,7 @@
         const cashEl = document.getElementById('cash-balance');
         if (cashEl) cashEl.textContent = eur.format(amount);
         setCashStatus('', 'info');
+        updateTransferStatus();
     }
 
     async function ensureCashRow() {
@@ -2403,6 +2428,77 @@
         };
         statusEl.textContent = message;
         statusEl.className = 'text-xs ' + (colors[type] || colors.info);
+    }
+
+    let transferStatusMode = 'idle';
+    let transferStatusTimer = null;
+
+    function applyTransferStatus(text, tone = 'info') {
+        if (!cashTransferStatus) return;
+        const colors = {
+            info: 'text-slate-600',
+            success: 'text-emerald-600',
+            error: 'text-rose-600'
+        };
+        cashTransferStatus.textContent = text;
+        cashTransferStatus.className = 'text-sm mt-1 ' + (colors[tone] || colors.info);
+    }
+
+    function updateTransferStatus(options = {}) {
+        if (!cashTransferStatus) return;
+        const { mode, message } = options;
+
+        if (!mode && transferStatusMode !== 'idle') {
+            return;
+        }
+
+        if (mode === 'saving') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'saving';
+            applyTransferStatus(message || 'Opslaan...', 'info');
+            return;
+        }
+
+        if (mode === 'success') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'success';
+            applyTransferStatus(message || 'Overschrijving opgeslagen', 'success');
+            transferStatusTimer = setTimeout(() => {
+                transferStatusMode = 'idle';
+                updateTransferStatus({ mode: 'idle' });
+            }, 2000);
+            return;
+        }
+
+        if (mode === 'error') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'error';
+            applyTransferStatus(message || 'Opslaan mislukt', 'error');
+            return;
+        }
+
+        if (mode === 'idle' || !mode) {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'idle';
+            const cashValue = Number(lastCashRow?.current_price) || 0;
+            const kasValue = Number.isFinite(latestKasBalance) ? latestKasBalance : null;
+            const text = kasValue !== null
+                ? `Portefeuille cash: ${eur.format(cashValue)} · Kas: ${eur.format(kasValue)}`
+                : `Portefeuille cash: ${eur.format(cashValue)}`;
+            applyTransferStatus(text, 'info');
+        }
     }
 
     async function fetchLatestCashRow() {
