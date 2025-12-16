@@ -129,6 +129,17 @@ class Kas(Base):
     created_by = Column(Integer, ForeignKey("Leden.ledenid"))
 
 
+class Liquiditeit(Base):
+    __tablename__ = "Liquiditeit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    groep_id = Column(Integer, ForeignKey("Groep.groep_id"), nullable=False)
+    datum = Column(Date, default=func.current_date())
+    bedrag = Column(Float, nullable=False)
+    omschrijving = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class GroepAanvragen(Base):
     __tablename__ = "groepsaanvragen"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -164,6 +175,7 @@ __all__ = [
     "Portefeuille",
     "Transacties",
     "Kas",
+    "Liquiditeit",
     "GroepAanvragen",
     "Wisselkoersen",
     "init_db",

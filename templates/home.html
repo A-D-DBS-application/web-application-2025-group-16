@@ -126,7 +126,16 @@
                     <div class="group-list-row">
                         <div class="group-list-info">
                             <p class="text-base font-semibold text-slate-900">{{ request.group_name or "Onbekende groep" }}</p>
-                            <p class="text-sm text-slate-500">Status: {{ request.status|capitalize }}</p>
+                            <p class="text-sm text-slate-500">
+                                {% if request.type == 'join' %}
+                                    Aanvraag: Lid worden
+                                {% elif request.type == 'leave' %}
+                                    Aanvraag: Groep verlaten
+                                {% else %}
+                                    Aanvraag: {{ request.type|capitalize }}
+                                {% endif %}
+                                · Status: {{ request.status|capitalize }}
+                            </p>
                             {% if request.created_at %}
                             <p class="text-xs text-slate-400">Aangevraagd op {{ request.created_at[:10] }}</p>
                             {% endif %}

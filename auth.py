@@ -385,14 +385,16 @@ def create_group_request(group_id, ledenid, type):
     except Exception as e:
         return False, str(e)
 
-def list_pending_leave_requests_for_user(ledenid):
+def list_pending_requests_for_user(ledenid, *, types=None):
+    if types is None:
+        types = ["leave"]
     try:
         session = SessionLocal()
         pending = (
             session.query(GroepAanvragen)
             .filter(
                 GroepAanvragen.ledenid == ledenid,
-                GroepAanvragen.type == "leave",
+                GroepAanvragen.type.in_(types),
                 GroepAanvragen.status == "pending",
             )
             .order_by(GroepAanvragen.created_at.asc())
@@ -676,6 +678,8 @@ def remove_member_from_group(group_id: int, member_id: int):
 def delete_group(group_id: int):
     try:
         session = SessionLocal()
+        # verwijder gekoppelde aanvragen eerst zodat de FK-constraint op groepsaanvragen intact blijft
+        session.query(GroepAanvragen).filter(GroepAanvragen.groep_id == group_id).delete()
         session.query(GroepLeden).filter(GroepLeden.groep_id == group_id).delete()
         session.query(Portefeuille).filter(Portefeuille.groep_id == group_id).delete()
         session.query(Groep).filter(Groep.groep_id == group_id).delete()

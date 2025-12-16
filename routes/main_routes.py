@@ -17,7 +17,7 @@ from auth import (
     list_cash_transactions_for_group,
     list_leden,
     log_portfolio_transaction,
-    list_pending_leave_requests_for_user,
+    list_pending_requests_for_user,
 )
 from fuzzy_search import refresh_ticker_index, search_tickers
 from market_data import get_ticker_data, sync_exchange_rates_to_db
@@ -37,7 +37,7 @@ def home():
 
     user_id = getattr(g, "user_id", None)
     if user_id:
-        ok_pending, pending = list_pending_leave_requests_for_user(user_id)
+        ok_pending, pending = list_pending_requests_for_user(user_id, types=["leave", "join"])
         if ok_pending and pending:
             pending_leave_groups = []
             pending_ids = set()
