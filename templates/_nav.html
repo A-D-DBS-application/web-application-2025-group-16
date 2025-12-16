@@ -8,8 +8,10 @@
 
     {% set p = request.path %}
 
-    <!-- Desktop menu (ONGEWIJZIGD) -->
+    <!-- Desktop menu (ORDERED BY PAGE TYPE) -->
     <div class="hidden md:flex gap-3 items-center">
+
+      {% set is_group_dashboard = request.endpoint == 'groups.group_dashboard' %}
 
       <a href="{{ url_for('main.home') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium
@@ -17,6 +19,15 @@
          if p.startswith('/home') or p=='/'
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Home
+      </a>
+
+      {% if is_group_dashboard %}
+      <a href="{{ url_for('main.portfolio') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/portfolio')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Portefeuille
       </a>
 
       <a href="{{ url_for('main.cashbox') }}"
@@ -35,12 +46,21 @@
         Instellingen
       </a>
 
+      {% else %}
       <a href="{{ url_for('main.portfolio') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium
          {{ 'bg-blue-50 border border-blue-200 text-blue-600'
          if p.startswith('/portfolio')
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Portefeuille
+      </a>
+
+      <a href="{{ url_for('main.cashbox') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/cash')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Kas
       </a>
 
       <a href="{{ url_for('groups.group_dashboard') }}"
@@ -50,6 +70,15 @@
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Groepsdashboard
       </a>
+
+      <a href="{{ url_for('groups.group_settings') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/settings')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Instellingen
+      </a>
+      {% endif %}
 
       <a href="{{ url_for('auth.logout') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium
@@ -73,12 +102,23 @@
   <div id="mobileMenu" class="hidden md:hidden border-t border-slate-200 bg-white">
     <div class="flex flex-col gap-2 p-4">
 
+      {% set is_group_dashboard = request.endpoint == 'groups.group_dashboard' %}
+
       <a href="{{ url_for('main.home') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium
          {{ 'bg-blue-50 border border-blue-200 text-blue-600'
          if p.startswith('/home') or p=='/'
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Home
+      </a>
+
+      {% if is_group_dashboard %}
+      <a href="{{ url_for('main.portfolio') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/portfolio')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Portefeuille
       </a>
 
       <a href="{{ url_for('main.cashbox') }}"
@@ -97,12 +137,21 @@
         Instellingen
       </a>
 
+      {% else %}
       <a href="{{ url_for('main.portfolio') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium
          {{ 'bg-blue-50 border border-blue-200 text-blue-600'
          if p.startswith('/portfolio')
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Portefeuille
+      </a>
+
+      <a href="{{ url_for('main.cashbox') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/cash')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Kas
       </a>
 
       <a href="{{ url_for('groups.group_dashboard') }}"
@@ -112,6 +161,15 @@
          else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
         Groepsdashboard
       </a>
+
+      <a href="{{ url_for('groups.group_settings') }}"
+         class="px-4 py-2 rounded-2xl text-sm font-medium
+         {{ 'bg-blue-50 border border-blue-200 text-blue-600'
+         if p.startswith('/groups/settings')
+         else 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}">
+        Instellingen
+      </a>
+      {% endif %}
 
       <a href="{{ url_for('auth.logout') }}"
          class="px-4 py-2 rounded-2xl text-sm font-medium

@@ -25,9 +25,14 @@
             </div>
 
             <!-- ========================= -->
-            <!-- DESKTOP: EXACT ORIGINEEL -->
+            <!-- DESKTOP: BUTTONS (HOME FIRST) -->
             <!-- ========================= -->
             <div class="hidden md:flex flex-wrap gap-3 justify-end">
+                <a href="{{ url_for('main.home') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
+                    <i data-lucide="home" class="h-5 w-5"></i>
+                    Home
+                </a>
+
                 <a href="{{ url_for('main.portfolio') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
                     <i data-lucide="pie-chart" class="h-5 w-5"></i>
                     Portefeuille
@@ -44,10 +49,6 @@
 
                 <!-- Liquiditeit tab removed — managed from Instellingen page -->
 
-                <a href="{{ url_for('main.home') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
-                    <i data-lucide="home" class="h-5 w-5"></i>
-                    Home
-                </a>
                 <a href="{{ url_for('auth.logout') }}" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-200/30">
                     <i data-lucide="log-out" class="h-5 w-5"></i>
                     Uitloggen
@@ -68,6 +69,11 @@
                 <div id="groupMenu"
                      class="hidden absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-lg p-2 z-30">
 
+                    <a href="{{ url_for('main.home') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
+                        <i data-lucide="home" class="h-4 w-4"></i>
+                        Home
+                    </a>
+
                     <a href="{{ url_for('main.portfolio') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
                         <i data-lucide="pie-chart" class="h-4 w-4"></i>
                         Portefeuille
@@ -81,11 +87,6 @@
                     <a href="{{ url_for('groups.group_settings') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
                         <i data-lucide="settings" class="h-4 w-4"></i>
                         Instellingen
-                    </a>
-
-                    <a href="{{ url_for('main.home') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
-                        <i data-lucide="home" class="h-4 w-4"></i>
-                        Home
                     </a>
 
                     <a href="{{ url_for('auth.logout') }}" class="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-blue-50 text-slate-700">
