@@ -5,13 +5,17 @@
     <title>Inloggen - Investment Group Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .toggle-button { color: #475569; transition: background 0.2s, color 0.2s; }
+        .toggle-button.active { background: #fff; color: #0f172a; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.15); }
+    </style>
 </head>
 <body class="min-h-screen bg-slate-100 font-sans">
     <div class="min-h-screen flex items-center justify-center px-4">
         <div class="w-full max-w-lg bg-white rounded-[2rem] shadow-xl shadow-blue-600/5 border border-slate-100 p-8 space-y-8">
             <div class="space-y-3 text-center">
                 <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Account</p>
-                <h1 class="text-3xl font-bold text-slate-900">Welkom terug</h1>
+                <h1 class="text-3xl font-bold text-slate-900">Welkom</h1>
                 <p class="text-sm text-slate-500">Gebruik je club-account om verder te bouwen aan je portefeuille.</p>
             </div>
 
@@ -24,7 +28,7 @@
             <div class="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{{ error }}</div>
             {% endif %}
 
-            <form method="post" action="{{ url_for('auth.login') }}" id="authForm" class="space-y-5">
+            <form method="post" action="{{ url_for('login') }}" id="authForm" class="space-y-5">
                 <div>
                     <label for="email" class="block text-xs uppercase tracking-[0.3em] text-slate-400 mb-2">Emailadres</label>
                     <input type="email" id="email" name="email" placeholder="you@example.com" required class="form-input w-full rounded-2xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" value="{{ email_value|default('') }}">
