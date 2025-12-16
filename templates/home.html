@@ -71,9 +71,23 @@
                             <div class="group-list-info">
                                 <p class="text-base font-semibold text-slate-900 flex items-center gap-2">
                                     {{ group.name or "Onbekende groep" }}
-                                   
+                                    {% if group.role == 'host' %}
+                                    <button type="button" class="text-slate-400 ml-2 text-sm inline-flex items-center gap-2" onclick="document.getElementById('rename-{{group.id}}').classList.toggle('hidden')">
+                                        <i data-lucide="edit-2" class="h-4 w-4"></i>
+                                        <span class="sr-only">Hernoemen</span>
+                                    </button>
+                                    {% endif %}
                                 </p>
                                 <p class="text-sm text-slate-500">Rol: {{ group.role or "member" }}</p>
+                                {% if group.role == 'host' %}
+                                <div id="rename-{{group.id}}" class="mt-2 hidden">
+                                    <form method="post" action="{{ url_for('groups.rename_group', group_id=group.id) }}" class="flex gap-2 items-center">
+                                        <input name="name" value="{{ group.name }}" class="border rounded px-2 py-1 text-sm w-64" />
+                                        <button type="submit" class="bg-blue-600 text-white rounded px-3 py-1 text-sm">Opslaan</button>
+                                        <button type="button" class="text-sm text-slate-500" onclick="document.getElementById('rename-{{group.id}}').classList.add('hidden')">Annuleren</button>
+                                    </form>
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="group-list-meta">
                                 <!-- ledenaantal en label verwijderd -->

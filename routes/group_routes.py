@@ -14,7 +14,7 @@ from auth import (
     create_group_record, get_group_by_code, get_group_by_id, group_code_exists,
     add_member_to_group, get_membership_for_user, get_membership_for_user_in_group,
     list_group_members, count_group_members, list_memberships_for_user, list_groups_by_ids,
-    initialize_cash_position, remove_member_from_group, delete_group,
+    initialize_cash_position, remove_member_from_group, delete_group, update_group_name,
     create_group_request, list_group_requests_for_group, approve_group_request, reject_group_request,
     update_member_role, list_leden
 )
@@ -165,6 +165,27 @@ def select_group(group_id):
     if ok and mem:
         session["group_id"] = group_id
     return redirect(url_for("groups.group_dashboard"))
+
+
+@groups_bp.route("/groups/rename/<int:group_id>", methods=["POST"])
+def rename_group(group_id):
+    if "user_id" not in session: return redirect(url_for("auth.login"))
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Naam verplicht.", "error")
+        return redirect(url_for("main.home"))
+
+    ok, mem = get_membership_for_user_in_group(session["user_id"], group_id)
+    if not ok or not mem or (mem.get("role") or mem.get("rol")) != "host":
+        flash("Alleen hosts mogen de naam wijzigen.", "error")
+        return redirect(url_for("main.home"))
+
+    ok_u, res = update_group_name(group_id, name)
+    if ok_u:
+        flash("Groepnaam succesvol bijgewerkt.", "success")
+    else:
+        flash(f"Fout bij bijwerken: {res}", "error")
+    return redirect(url_for("main.home"))
 
 # --- Lid promoveren tot Host ---
 @groups_bp.route("/groups/promote/<int:member_id>", methods=["POST"])

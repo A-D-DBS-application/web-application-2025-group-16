@@ -560,6 +560,33 @@ def delete_group(group_id: int):
     except Exception as e:
         return False, str(e)
 
+
+def update_group_name(group_id: int, new_name: str):
+    """Update the group's name (only modifies the Groep table). Returns (True, normalized_group) or (False, message)."""
+    try:
+        if not new_name or not str(new_name).strip():
+            return False, "Naam verplicht"
+        session = SessionLocal()
+        grp = session.query(Groep).filter(Groep.groep_id == group_id).first()
+        if not grp:
+            session.close()
+            return False, "Groep niet gevonden"
+        grp.groep_naam = str(new_name).strip()
+        session.commit()
+        normalized = _normalize_group_row({
+            "groep_id": grp.groep_id,
+            "groep_naam": grp.groep_naam,
+            "omschrijving": grp.omschrijving,
+            "invite_code": grp.invite_code,
+            "owner_lid_id": grp.owner_lid_id,
+            "created_at": grp.created_at,
+        })
+        session.close()
+        return True, normalized
+    except Exception as e:
+        return False, str(e)
+
+
 def add_portfolio_position(group_id, ticker, quantity, price, user_id):
     try:
         quantity_int = int(float(quantity))
