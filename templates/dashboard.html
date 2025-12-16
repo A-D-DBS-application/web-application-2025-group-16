@@ -25,7 +25,7 @@
             </span>
             {% endif %}
         </div>
-        <h1 class="text-2xl font-bold text-slate-900">Overzicht per groep</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Overzicht</h1>
     </div>
 
     <div class="flex gap-2">
@@ -68,49 +68,7 @@
 </div>
 {% endif %}
 {% endwith %}
-
 {% set builder_disabled = 'disabled' if not active_group else '' %}
-
-<div class="glass-card p-5 mb-8">
-    {% if user_groups %}
-    <div class="flex flex-col gap-4">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div>
-                <p class="text-xs text-slate-400 uppercase tracking-[0.25em]">Jouw groepen</p>
-                <p class="text-sm text-slate-500">Klik op een groep om die portefeuille te openen.</p>
-            </div>
-            <p class="text-sm text-slate-500">{{ user_groups|length }} groep{% if (user_groups|length) != 1 %}en{% endif
-                %}</p>
-        </div>
-        <div class="flex flex-wrap gap-3">
-            {% for group in user_groups %}
-            <form method="post" action="{{ url_for('groups.select_group', group_id=group.id) }}">
-                <button type="submit"
-                    class="px-4 py-2 rounded-full border text-sm font-semibold transition-colors flex items-center gap-2 {% if group.is_current %}bg-blue-600 text-white border-blue-600{% else %}border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700{% endif %}"
-                    {% if group.is_current %}disabled{% endif %}>
-                    <i data-lucide="shield" class="h-4 w-4"></i>
-                    {{ group.name or "Onbekend" }}
-                    {% if group.is_current %}
-                    <span class="text-xs uppercase tracking-wide">Actief</span>
-                    {% endif %}
-                </button>
-            </form>
-            {% endfor %}
-        </div>
-    </div>
-    {% else %}
-    <div class="text-center py-6">
-        <p class="text-lg font-semibold text-slate-900">Nog geen groep gevonden</p>
-        <p class="text-slate-500 text-sm">Maak een nieuwe groep aan of sluit je aan via de homepagina.</p>
-        <div class="mt-4 flex justify-center gap-3">
-            <a href="{{ url_for('groups.create_group') }}"
-                class="px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-semibold">Nieuwe groep</a>
-            <a href="{{ url_for('groups.join_group') }}"
-                class="px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold text-slate-700">Aansluiten</a>
-        </div>
-    </div>
-    {% endif %}
-</div>
 
 <div class="glass-card p-6 mb-8">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
