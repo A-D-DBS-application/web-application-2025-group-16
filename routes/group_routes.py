@@ -26,6 +26,19 @@ def _generate_invite_code(length: int = 6) -> str:
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
+def _format_gsm(gsm_number):
+    """Formatteer GSM-nummer als '0412 34 56 78' format."""
+    if not gsm_number:
+        return None
+    # Verwijder alle spaties en non-digit karakters
+    clean = "".join(c for c in str(gsm_number) if c.isdigit())
+    # Check of het 10 cijfers heeft (Belgisch formaat)
+    if len(clean) == 10:
+        # Format: XXXX XX XX XX (eerste 4 zonder spatie, dan 3 paren met spatie)
+        return f"{clean[0:4]} {clean[4:6]} {clean[6:8]} {clean[8:10]}"
+    # Als niet correct format, geef origineel terug
+    return gsm_number
+
 def get_user_active_group():
     """Compatibiliteitshelper: gebruikt gedeelde context helper."""
     return get_active_group_record()
@@ -54,10 +67,12 @@ def _resolve_member_profiles(member_rows):
         mid = row.get("member_id")
         entry = lookup.get(mid, {})
         full_name = f"{entry.get('voornaam', '')} {entry.get('achternaam', '')}".strip() or f"Lid {mid}"
+        gsm_raw = entry.get("GSM") or entry.get("gsm")
         profiles.append({
             "ledenid": mid,
             "volledige_naam": full_name,
             "email": entry.get("email") or "Onbekend",
+            "gsm": _format_gsm(gsm_raw),
             "role": row.get("role") or "member",
         })
     return profiles

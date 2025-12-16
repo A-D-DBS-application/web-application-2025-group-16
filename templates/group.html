@@ -132,6 +132,9 @@
                         <div>
                             <p class="font-semibold text-slate-900">{{ member.volledige_naam }}</p>
                             <p class="text-sm text-slate-500">{{ member.email }}</p>
+                            {% if is_owner and member.gsm %}
+                            <p class="text-sm text-slate-500">{{ member.gsm }}</p>
+                            {% endif %}
                         </div>
 
                         <div class="flex items-center gap-3">
@@ -208,61 +211,60 @@
             {% endif %}
 
             {% if is_owner %}
+            {% if requests and requests|length > 0 %}
             <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+                <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="inbox" class="h-5 w-5 text-blue-500"></i>
+                    Lid-aanvragen
+                </h2>
 
-            <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <i data-lucide="settings" class="h-5 w-5 text-blue-500"></i>
-                Groepsbeheer
-            </h2>
-            <div class="space-y-3">
-                <p class="text-sm text-slate-600">Als eigenaar kun je de groep verwijderen of leden uit de groep halen.</p>
-                <button type="button" class="w-full px-4 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors" onclick="document.getElementById('deleteGroupModal').classList.remove('hidden')">
-                    <i data-lucide="trash-2" class="inline h-4 w-4 mr-2"></i>
-                    Groep verwijderen
-                </button>
-            </div>
-        </div>
+                {% for r in requests %}
+                <div class="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50">
+                    <div>
+                        <p class="font-semibold text-slate-900">
+                            {{ r.full_name }}
+                            {% if r.type == 'join' %}
+                                wil lid worden van de groep
+                            {% elif r.type == 'leave' %}
+                                wil de groep verlaten
+                            {% else %}
+                                heeft een verzoek ingediend
+                            {% endif %}
+                        </p>
+                    </div>
 
-        {% if requests and requests|length > 0 %}
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <i data-lucide="inbox" class="h-5 w-5 text-blue-500"></i>
-                Lid-aanvragen
-            </h2>
-
-            {% for r in requests %}
-            <div class="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50">
-                <div>
-                    <p class="font-semibold text-slate-900">
-                        {{ r.full_name }}
-                        {% if r.type == 'join' %}
-                            wil lid worden van de groep
-                        {% elif r.type == 'leave' %}
-                            wil de groep verlaten
-                        {% else %}
-                            heeft een verzoek ingediend
-                        {% endif %}
-                    </p>
+                    <div class="flex gap-2">
+                        <form method="POST" action="{{ url_for('groups.approve_request', req_id=r.id) }}" style="display:inline;">
+                            <button type="submit"
+                                class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium text-sm">
+                                Goedkeuren
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('groups.reject_request', req_id=r.id) }}" style="display:inline;">
+                            <button type="submit"
+                                class="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 font-medium text-sm">
+                                Weigeren
+                            </button>
+                        </form>
+                    </div>
                 </div>
+                {% endfor %}
+            </div>
+            {% endif %}
 
-                <div class="flex gap-2">
-                    <form method="POST" action="{{ url_for('groups.approve_request', req_id=r.id) }}" style="display:inline;">
-                        <button type="submit"
-                            class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium text-sm">
-                            Goedkeuren
-                        </button>
-                    </form>
-                    <form method="POST" action="{{ url_for('groups.reject_request', req_id=r.id) }}" style="display:inline;">
-                        <button type="submit"
-                            class="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 font-medium text-sm">
-                            Weigeren
-                        </button>
-                    </form>
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+                <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="settings" class="h-5 w-5 text-blue-500"></i>
+                    Groepsbeheer
+                </h2>
+                <div class="space-y-3">
+                    <p class="text-sm text-slate-600">Als eigenaar kun je de groep verwijderen of leden uit de groep halen.</p>
+                    <button type="button" class="w-full px-4 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors" onclick="document.getElementById('deleteGroupModal').classList.remove('hidden')">
+                        <i data-lucide="trash-2" class="inline h-4 w-4 mr-2"></i>
+                        Groep verwijderen
+                    </button>
                 </div>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
 
         <div id="deleteGroupModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-2xl max-w-md w-full space-y-6">
