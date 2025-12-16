@@ -1,3 +1,4 @@
+import os
 from flask import Flask, redirect, url_for, session
 from config import SECRET_KEY
 from dotenv import load_dotenv

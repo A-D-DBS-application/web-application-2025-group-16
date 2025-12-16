@@ -1,129 +1,56 @@
 # nodig voor je Dashboard, Cashbox en Transacties
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 import pandas as pd
 import io
 from fuzzy_search import search_tickers, refresh_ticker_index  
 
 # Imports
-from config import supabase, supabase_admin, SUPABASE_URL, SUPABASE_ANON_KEY
+from config import supabase, SUPABASE_URL, SUPABASE_ANON_KEY
 from auth import (
-    get_group_by_id, list_memberships_for_user, list_groups_by_ids, count_group_members,
-    get_membership_for_user, get_membership_for_user_in_group, list_leden,
-    add_cash_transaction, list_cash_transactions_for_group, get_cash_balance_for_group,
-    add_portfolio_position, koersen_updater, log_portfolio_transaction, initialize_cash_position
+    add_cash_transaction,
+    add_portfolio_position,
+    get_cash_balance_for_group,
+    initialize_cash_position,
+    koersen_updater,
+    list_cash_transactions_for_group,
+    list_leden,
+    log_portfolio_transaction,
+    get_membership_for_user_in_group,
 )
 # Zoek naar je imports bovenaan en zorg dat dit er staat:
-from market_data import get_ticker_data, get_currency_rate, sync_exchange_rates_to_db 
+from market_data import get_ticker_data, sync_exchange_rates_to_db 
 import ai_manager  # Jouw nieuwe ai_manager.py
+from view_helpers import login_required, with_group_context
 
 main_bp = Blueprint('main', __name__)
-
-# --- HELPERS ---
-def _current_group_snapshot():
-    uid = session.get("user_id")
-    gid = session.get("group_id")
-    if not uid: return None
-    
-    # Check membership
-    mem = None
-    if gid:
-        ok, mem = get_membership_for_user_in_group(uid, gid)
-    
-    if not mem:
-        ok, mem = get_membership_for_user(uid)
-        if mem and isinstance(mem, dict): 
-            session["group_id"] = mem.get("group_id")
-    
-    # Validate: mem moet een dict zijn met group_id key
-    if not mem or not isinstance(mem, dict) or "group_id" not in mem: 
-        return None
-
-    ok, group = get_group_by_id(mem["group_id"])
-    if not group: return None
-    
-    ok, count = count_group_members(group.get("id") or group.get("groep_id"))
-    return {
-        "id": group.get("id") or group.get("groep_id"), 
-        "name": group.get("name") or group.get("groep_naam"), 
-        "code": group.get("invite_code"), 
-        "member_total": count or 0,
-        "role": mem.get("role") or mem.get("rol")
-    }
-
-def _is_host():
-    snap = _current_group_snapshot()
-    return snap and snap.get("role") == "host"
-
-def _list_user_groups():
-    uid = session.get("user_id")
-    if not uid: return []
-    
-    # 1. Haal de data op
-    ok, memberships = list_memberships_for_user(uid)
-    
-    # 2. CRUCIALE CHECK: Is het gelukt (ok is True) EN is het een lijst?
-    if not ok or not isinstance(memberships, list):
-        # Optioneel: print de fout in je logs om te zien wat er mis is
-        print(f"DEBUG: list_memberships failed or not a list: {memberships}")
-        return []
-
-    # 3. Check of de lijst niet leeg is
-    if not memberships: 
-        return []
-
-    # 4. Veilige list comprehension (check of m wel een dict is)
-    ids = [m["group_id"] for m in memberships if isinstance(m, dict) and "group_id" in m]
-    
-    if not ids:
-        return []
-
-    ok_groups, groups = list_groups_by_ids(ids)
-    
-    res = []
-    # Zorg dat groups ook echt een lijst is voordat we verder gaan
-    if not ok_groups or not isinstance(groups, list):
-        groups = []
-
-    g_map = {g["id"]: g for g in groups if isinstance(g, dict) and "id" in g}
-    cur = session.get("group_id")
-    
-    for m in memberships:
-        # Extra veiligheid
-        if not isinstance(m, dict): continue
-        
-        gid = m.get("group_id")
-        g = g_map.get(gid)
-        
-        if g:
-            res.append({
-                "id": g["id"], 
-                "name": g.get("name") or g.get("groep_naam"), # Fallback voor naam
-                "role": m.get("role") or m.get("rol"),        # Fallback voor rol
-                "is_current": (g["id"] == cur)
-            })
-    return res
 
 # --- PAGES ---
 
 @main_bp.route("/home")
+@login_required()
+@with_group_context()
 def home():
-    if "user_id" not in session: return redirect(url_for("auth.login"))
-    return render_template("home.html", group_snapshot=_current_group_snapshot(), user_groups=_list_user_groups())
+    return render_template("home.html", group_snapshot=g.group_snapshot, user_groups=g.user_groups)
 
 @main_bp.route("/portfolio")
+@login_required()
+@with_group_context()
 def portfolio():
-    if "user_id" not in session: return redirect(url_for("auth.login"))
-    snap = _current_group_snapshot()
-    is_host = (snap and snap.get("role") == "host")
-    return render_template("dashboard.html", supabase_url=SUPABASE_URL, supabase_key=SUPABASE_ANON_KEY, active_group=snap, user_groups=_list_user_groups(), is_host=is_host)
+    return render_template(
+        "dashboard.html",
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_ANON_KEY,
+        active_group=g.group_snapshot,
+        user_groups=g.user_groups,
+        is_host=g.is_host,
+    )
 
 @main_bp.route("/cash", methods=["GET", "POST"])
+@login_required()
+@with_group_context(require_active=True)
 def cashbox():
-    if "user_id" not in session: return redirect(url_for("auth.login"))
-    snap = _current_group_snapshot()
-    if not snap: return redirect(url_for("main.home"))
-    
-    is_host = (snap.get("role") == "host")
+    snap = g.group_snapshot
+    is_host = g.is_host
     error = None
 
     if request.method == "POST":
@@ -133,7 +60,7 @@ def cashbox():
                 amt = float(request.form.get("amount", "0").strip())
                 direction = request.form.get("direction")
                 desc = request.form.get("description")
-                add_cash_transaction(snap["id"], amt, direction, desc, session["user_id"])
+                add_cash_transaction(snap["id"], amt, direction, desc, g.user_id)
                 return redirect(url_for("main.cashbox"))
             except: error = "Fout in invoer."
 
@@ -146,37 +73,24 @@ def cashbox():
 # Verplaatst naar routes/transacties.py
 
 @main_bp.route("/api/dashboard-snapshot")
+@login_required(response="json")
+@with_group_context(response="json", require_active=True)
 def api_dashboard_snapshot():
-    """Eenvoudige snapshot endpoint zodat dashboard geen 404 geeft.
-    Geeft basisinformatie terug voor de actieve groep uit de sessie.
-    """
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
-
-    snap = _current_group_snapshot()
-    if not snap:
-        return jsonify({"error": "Geen actieve groep"}), 404
+    """Return a snapshot for the active group so the dashboard has context."""
     try:
-        ok, bal = get_cash_balance_for_group(snap["id"])
+        ok, bal = get_cash_balance_for_group(g.group_snapshot["id"])
         return jsonify({
-            "group": snap,
+            "group": g.group_snapshot,
             "cash_balance": bal or 0.0,
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @main_bp.route("/api/cash/transfer", methods=["POST"])
+@login_required(response="json")
+@with_group_context(response="json", require_active=True, require_host=True)
 def api_cash_transfer():
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
-
-    snap = _current_group_snapshot()
-    if not snap:
-        return jsonify({"error": "Geen actieve groep"}), 404
-    if snap.get("role") != "host":
-        return jsonify({"error": "Alleen hosts"}), 403
-
     payload = request.get_json() or {}
     try:
         amount = float(payload.get("amount") or 0)
@@ -191,7 +105,7 @@ def api_cash_transfer():
     if target not in ("portfolio", "kas"):
         return jsonify({"error": "Ongeldig doel"}), 400
 
-    gid = snap["id"]
+    gid = g.group_snapshot["id"]
     try:
         if target == "kas":
             ok_bal, current_bal = get_cash_balance_for_group(gid)
@@ -207,7 +121,7 @@ def api_cash_transfer():
                 amount,
                 direction,
                 payload.get("description"),
-                session.get("user_id")
+                g.user_id,
             )
             if not ok_cash:
                 return jsonify({"error": cash_row or "Kastransactie opslaan mislukt"}), 500
@@ -254,13 +168,11 @@ def api_cash_transfer():
         return jsonify({"error": str(exc)}), 500
 
 @main_bp.route("/api/portfolio/<int:port_id>/add_cost", methods=["POST"])
+@login_required(response="json")
 def api_add_portfolio_cost(port_id: int):
     """Verhoog cumulatieve transactiekost voor een portfolio.
     Body: { amount: number }
     """
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
-
     # Controle: gebruiker moet lid zijn van de groep van deze portfolio
     try:
         port = supabase.table("Portefeuille").select("port_id, groep_id, transactiekost").eq("port_id", port_id).limit(1).execute()
@@ -269,7 +181,7 @@ def api_add_portfolio_cost(port_id: int):
             return jsonify({"error": "Portfolio niet gevonden"}), 404
         row = rows[0]
         gid = row.get("groep_id")
-        ok, mem = get_membership_for_user_in_group(session.get("user_id"), gid)
+        ok, mem = get_membership_for_user_in_group(g.user_id, gid)
         if not (ok and mem):
             return jsonify({"error": "Geen toegang"}), 403
 
@@ -287,16 +199,17 @@ def api_add_portfolio_cost(port_id: int):
 
     
 @main_bp.route("/leden")
+@login_required()
+@with_group_context()
 def leden():
-    if "user_id" not in session: return redirect(url_for("auth.login"))
     ok, res = list_leden()
-    return render_template("leden.html", leden=res if ok else [], is_host=_is_host())
+    return render_template("leden.html", leden=res if ok else [], is_host=g.is_host)
 
 # --- ACTIES (CSV, REFRESH, LOG) ---
 
 @main_bp.route("/group/<int:group_id>/refresh_prices")
+@login_required()
 def refresh_prices(group_id):
-    if "user_id" not in session: return redirect(url_for("auth.login"))
     ok, msg = koersen_updater(group_id)  # Update via server-side helper
     if ok:
         flash(msg or "Koersen ververst.", "success")
@@ -306,9 +219,8 @@ def refresh_prices(group_id):
 
 # JSON variant voor AJAX: ververst enkel koersen, geeft count/boodschap terug
 @main_bp.route("/api/groups/<int:group_id>/refresh_prices", methods=["POST"])
+@login_required(response="json")
 def api_refresh_prices(group_id):
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
     ok, msg = koersen_updater(group_id)
     if not ok:
         return jsonify({"error": msg or "Verversen mislukt"}), 500
@@ -324,11 +236,9 @@ def api_refresh_prices(group_id):
     return jsonify({"ok": True, "message": msg, "updated": updated})
 
 @main_bp.route("/api/transactions/log", methods=["POST"])
+@login_required(response="json")
+@with_group_context(response="json", require_active=True, require_host=True)
 def api_log_transaction():
-    if "user_id" not in session: return jsonify({"error": "Login"}), 401
-    snap = _current_group_snapshot()
-    if not snap or snap.get("role") != "host": return jsonify({"error": "Alleen host"}), 403
-    
     data = request.get_json() or {}
     # Logica doorsturen naar auth.py helper
     ok, res = log_portfolio_transaction(
@@ -341,12 +251,14 @@ def api_log_transaction():
 
 # --- AI ENDPOINTS ---
 @main_bp.route("/api/ai/analyze-stock", methods=["POST"])
+@login_required(response="json")
 def analyze_stock():
     tick = request.get_json().get("ticker")
     prompt = f"Maak een diepe analyse van aandeel {tick}. Geef nadien bull en bear argumenten. Output mag geen tabellen bevatten, maar wel een mooie opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
 
 @main_bp.route("/api/ai/analyze-portfolio", methods=["POST"])
+@login_required(response="json")
 def analyze_portfolio():
     data = request.get_json()
     prompt = f"Maak een diepe analyse van deze portefeuille: {data}. Output mag geen tabellen bevatten, maar wel een mooie opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
@@ -354,13 +266,11 @@ def analyze_portfolio():
 
 # --- IMPORT CSV ROUTE (ONTBRAK EERDER) ---
 @main_bp.route("/group/<int:group_id>/import_csv", methods=["POST"])
+@login_required()
+@with_group_context(require_active=True, require_host=True)
 def import_csv(group_id):
-    if "user_id" not in session: return redirect(url_for("auth.login"))
-    
-    # Check of user host is
-    snap = _current_group_snapshot()
-    if not snap or snap.get("role") != "host":
-        flash("Alleen hosts kunnen importeren.", "error")
+    if g.group_snapshot and g.group_snapshot["id"] != group_id:
+        flash("Onbekende groep geselecteerd.", "error")
         return redirect(url_for("main.portfolio"))
 
     file = request.files.get('file')
@@ -405,7 +315,7 @@ def import_csv(group_id):
                         
                         if t and a > 0:
                             # Voeg positie toe
-                            add_portfolio_position(group_id, t, a, p, session["user_id"])
+                            add_portfolio_position(group_id, t, a, p, g.user_id)
                             cnt += 1
                     except: pass
                 flash(f"Succes! {cnt} posities geïmporteerd.", "success")
@@ -419,20 +329,18 @@ def import_csv(group_id):
 # --- API ROUTES (VOOR YAHOO FINANCE & WISSELKOERSEN) ---
 
 @main_bp.route('/api/quote/<ticker>')
+@login_required(response="json")
 def api_get_quote(ticker):
     """Haalt koersdata op via market_data.py"""
-    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
-    
     data = get_ticker_data(ticker)
     if data:
         return jsonify(data)
     return jsonify({'error': 'Ticker niet gevonden of API fout'}), 404
 
 @main_bp.route('/api/currency/<ticker>')
+@login_required(response="json")
 def api_get_currency(ticker):
     """Zoekt in eerdere transacties welke munt bij deze ticker hoort."""
-    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
-    
     try:
         # Zoek in database naar laatste transactie van deze ticker
         res = supabase.table('Transacties').select('munt').eq('ticker', ticker.upper()).limit(1).execute()
@@ -458,10 +366,9 @@ def api_get_wk(cur):
         return jsonify({'error': str(e)}), 500
 
 @main_bp.route('/api/refresh-wk', methods=['POST'])
+@login_required(response="json")
 def api_refresh_wk():
     """Update de wisselkoersen in de database (aangeroepen door de knop 'Ververs WK')."""
-    if "user_id" not in session: return jsonify({"error": "Niet ingelogd"}), 401
-    
     try:
         data = request.get_json() or {}
         currencies = data.get('currencies', [])
@@ -474,11 +381,9 @@ def api_refresh_wk():
         return jsonify({'error': str(e)}), 500
     
 @main_bp.route('/api/search-tickers')
+@login_required(response="json")
 def api_search_tickers():
     """Eigen fuzzy search met Yahoo fallback."""
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
-    
     query = request.args.get('q', '').strip()
     if not query or len(query) < 1:
         return jsonify([])
@@ -488,11 +393,9 @@ def api_search_tickers():
     return jsonify(results)
 
 @main_bp.route('/api/refresh-ticker-index', methods=['POST'])
+@login_required(response="json")
 def api_refresh_ticker_index():
     """Optioneel: refresh ticker index."""
-    if "user_id" not in session:
-        return jsonify({"error": "Niet ingelogd"}), 401
-    
     try:
         count = refresh_ticker_index(supabase)
         return jsonify({'count': count, 'message': f'Index ververst met {count} tickers'})

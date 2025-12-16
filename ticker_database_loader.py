@@ -40,15 +40,28 @@ def _download_sp500():
     #Download S&P 500 lijst van GitHub.
     try:
         import pandas as pd
+        import requests
+        import io
         url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
-        df = pd.read_csv(url, timeout=5)
-        
+        try:
+            resp = requests.get(url, timeout=5)
+            resp.raise_for_status()
+            df = pd.read_csv(io.StringIO(resp.text))
+        except requests.RequestException as re:
+            logger.warning(f"S&P 500 download failed (request): {re}")
+            return []
+
         tickers = []
         for _, row in df.iterrows():
+            ticker_sym = str(row.get('Symbol', '')).strip()
+            if not ticker_sym:
+                continue
+            name = str(row.get('Security', '')).strip() or ''
+            sector = str(row.get('GICS Sector', 'Onbekend')).strip() or 'Onbekend'
             tickers.append({
-                'ticker': str(row['Symbol']),
-                'name': str(row['Name']),
-                'sector': str(row['Sector']) if 'Sector' in row else 'Onbekend'
+                'ticker': ticker_sym,
+                'name': name,
+                'sector': sector
             })
         return tickers
     except Exception as e:

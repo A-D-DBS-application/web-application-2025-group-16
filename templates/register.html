@@ -1,12 +1,12 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="UTF-8">
-  <title>Registreren - InvestClub</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="min-h-screen bg-slate-100 font-sans">
+{% extends 'base.html' %}
+
+{% block title %}Registreren - InvestClub{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block body_class %}min-h-screen bg-slate-100 font-sans{% endblock %}
+
+{% block content_wrapper %}
   <div class="min-h-screen flex items-center justify-center px-4">
     <div class="w-full max-w-xl bg-white rounded-[2rem] shadow-xl shadow-blue-600/5 border border-slate-100 p-8 space-y-8">
       <div class="space-y-2 text-center">
@@ -43,5 +43,4 @@
       <p class="text-center text-sm text-slate-500">Heb je al een account? <a href="{{ url_for('auth.login') }}" class="text-blue-600 font-semibold">Terug naar login</a></p>
     </div>
   </div>
-</body>
-</html>
+{% endblock %}

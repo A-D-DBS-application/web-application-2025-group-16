@@ -1,13 +1,12 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>Bij groep aansluiten - InvestClub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+{% extends 'base.html' %}
+
+{% block title %}Bij groep aansluiten - InvestClub{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block body_class %}bg-slate-50 min-h-screen flex items-center justify-center p-4{% endblock %}
+
+{% block content_wrapper %}
     <div class="bg-white border border-slate-200 shadow-xl rounded-2xl w-full max-w-xl p-8 space-y-8">
         <div class="flex items-center justify-between">
             <div>
@@ -43,9 +42,4 @@
             Nog geen code? <a href="{{ url_for('groups.create_group') }}" class="text-blue-600 font-semibold">Start een eigen groep</a>.
         </p>
     </div>
-
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+{% endblock %}

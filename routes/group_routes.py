@@ -3,13 +3,18 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 import secrets
 from instap_uitstapkost import calculate_entry_cost, calculate_exit_cost
 from config import supabase
+from session_context import (
+    get_active_group_record,
+    get_current_membership,
+    is_current_user_host,
+)
 
 # Importeer functies uit jouw auth.py en config
 from auth import (
     create_group_record, get_group_by_code, get_group_by_id, group_code_exists,
     add_member_to_group, get_membership_for_user, get_membership_for_user_in_group,
     list_group_members, count_group_members, list_memberships_for_user, list_groups_by_ids,
-    initialize_cash_position, remove_member_from_group, delete_group,
+    initialize_cash_position, remove_member_from_group, delete_group, update_group_name,
     create_group_request, list_group_requests_for_group, approve_group_request, reject_group_request,
     update_member_role, list_leden
 )
@@ -21,37 +26,35 @@ def _generate_invite_code(length: int = 6) -> str:
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
-def get_user_active_group():
-    """Geeft de actieve groep van de gebruiker op basis van session['group_id']."""
-    group_id = session.get("group_id")
-    if not group_id:
+def _format_gsm(gsm_number):
+    """Formatteer GSM-nummer als '0412 34 56 78' format."""
+    if not gsm_number:
         return None
+    # Verwijder alle spaties en non-digit karakters
+    clean = "".join(c for c in str(gsm_number) if c.isdigit())
+    # Check of het 10 cijfers heeft (Belgisch formaat)
+    if len(clean) == 10:
+        # Format: XXXX XX XX XX (eerste 4 zonder spatie, dan 3 paren met spatie)
+        return f"{clean[0:4]} {clean[4:6]} {clean[6:8]} {clean[8:10]}"
+    # Als niet correct format, geef origineel terug
+    return gsm_number
 
-    resp = supabase.table("Groep").select("*").eq("groep_id", group_id).single().execute()
-    return resp.data
+def get_user_active_group():
+    """Compatibiliteitshelper: gebruikt gedeelde context helper."""
+    return get_active_group_record()
 
-
-def _current_group_membership():
-    user_id = session.get("user_id")
-    if not user_id: return None
-    desired_group_id = session.get("group_id")
-    if desired_group_id:
-        ok, membership = get_membership_for_user_in_group(user_id, desired_group_id)
-        if ok and membership: return membership
-    ok, membership = get_membership_for_user(user_id)
-    if membership: session["group_id"] = membership.get("group_id")
-    return membership
-
-def _is_current_user_host():
-    mem = _current_group_membership()
-    return mem and mem.get("role") == "host"
 
 def _load_group_context():
-    membership = _current_group_membership()
-    if not membership: return None, [], "Je hoort momenteel niet bij een groep."
-    ok, group = get_group_by_id(membership["group_id"])
-    if not ok or not group: return None, [], None
-    ok, member_rows = list_group_members(group["id"])
+    membership = get_current_membership()
+    if not membership:
+        return None, [], "Je hoort momenteel niet bij een groep."
+
+    group_id = membership.get("group_id")
+    ok, group = get_group_by_id(group_id)
+    if not ok or not group:
+        return None, [], None
+
+    ok, member_rows = list_group_members(group.get("id") or group_id)
     return group, member_rows, None
 
 def _resolve_member_profiles(member_rows):
@@ -64,10 +67,12 @@ def _resolve_member_profiles(member_rows):
         mid = row.get("member_id")
         entry = lookup.get(mid, {})
         full_name = f"{entry.get('voornaam', '')} {entry.get('achternaam', '')}".strip() or f"Lid {mid}"
+        gsm_raw = entry.get("GSM") or entry.get("gsm")
         profiles.append({
             "ledenid": mid,
             "volledige_naam": full_name,
             "email": entry.get("email") or "Onbekend",
+            "gsm": _format_gsm(gsm_raw),
             "role": row.get("role") or "member",
         })
     return profiles
@@ -126,7 +131,7 @@ def group_dashboard():
     if not group: return redirect(url_for("main.home"))
 
     profiles = _resolve_member_profiles(members)
-    is_host = _is_current_user_host()
+    is_host = is_current_user_host()
     
     # Aanvragen ophalen
     requests_list = []
@@ -176,6 +181,27 @@ def select_group(group_id):
         session["group_id"] = group_id
     return redirect(url_for("groups.group_dashboard"))
 
+
+@groups_bp.route("/groups/rename/<int:group_id>", methods=["POST"])
+def rename_group(group_id):
+    if "user_id" not in session: return redirect(url_for("auth.login"))
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Naam verplicht.", "error")
+        return redirect(url_for("main.home"))
+
+    ok, mem = get_membership_for_user_in_group(session["user_id"], group_id)
+    if not ok or not mem or (mem.get("role") or mem.get("rol")) != "host":
+        flash("Alleen hosts mogen de naam wijzigen.", "error")
+        return redirect(url_for("main.home"))
+
+    ok_u, res = update_group_name(group_id, name)
+    if ok_u:
+        flash("Groepnaam succesvol bijgewerkt.", "success")
+    else:
+        flash(f"Fout bij bijwerken: {res}", "error")
+    return redirect(url_for("main.home"))
+
 # --- Lid promoveren tot Host ---
 @groups_bp.route("/groups/promote/<int:member_id>", methods=["POST"])
 def promote_member(member_id):
@@ -183,7 +209,7 @@ def promote_member(member_id):
         return redirect(url_for("auth.login"))
     
     # Check of de huidige gebruiker zelf wel host is
-    if not _is_current_user_host():
+    if not is_current_user_host():
         flash("Alleen hosts kunnen anderen promoveren.", "error")
         return redirect(url_for("groups.group_dashboard"))
 
@@ -204,7 +230,7 @@ def demote_member(member_id):
         return redirect(url_for("auth.login"))
     
     # Check of huidige user host is
-    if not _is_current_user_host():
+    if not is_current_user_host():
         flash("Geen rechten.", "error")
         return redirect(url_for("groups.group_dashboard"))
 
@@ -228,13 +254,13 @@ def demote_member(member_id):
 
 @groups_bp.route("/groups/requests/<int:req_id>/approve", methods=["POST"])
 def approve_request(req_id):
-    if not _is_current_user_host(): return redirect(url_for("groups.group_dashboard"))
+    if not is_current_user_host(): return redirect(url_for("groups.group_dashboard"))
     approve_group_request(req_id, session["user_id"])
     return redirect(url_for("groups.group_dashboard"))
 
 @groups_bp.route("/groups/requests/<int:req_id>/reject", methods=["POST"])
 def reject_request(req_id):
-    if not _is_current_user_host(): return redirect(url_for("groups.group_dashboard"))
+    if not is_current_user_host(): return redirect(url_for("groups.group_dashboard"))
     reject_group_request(req_id, session["user_id"])
     flash("Aanvraag afgewezen.", "info")
     return redirect(url_for("groups.group_dashboard"))
@@ -264,15 +290,19 @@ def liquiditeit_page():
     if not active_group:
         return redirect(url_for('main.portfolio'))
 
+    group_id = active_group.get("id") or active_group.get("groep_id")
+    if not group_id:
+        return redirect(url_for('main.portfolio'))
+
     # JUISTE TABEL + JUISTE KOLOMNAMEN
     liq = supabase.table("Liquiditeit") \
         .select("*") \
-        .eq("groep_id", active_group["groep_id"]) \
+        .eq("groep_id", group_id) \
         .order("created_at", desc=True) \
         .execute().data
 
     total_liq = sum(float(r["bedrag"]) for r in liq) if liq else 0
-    is_host = _is_current_user_host()
+    is_host = is_current_user_host()
 
     return render_template(
         'liquiditeit.html',
@@ -292,8 +322,12 @@ def liquiditeit_add():
     if not active_group:
         return redirect(url_for('main.portfolio'))
 
+    group_id = active_group.get("id") or active_group.get("groep_id")
+    if not group_id:
+        return redirect(url_for('main.portfolio'))
+
     # Alleen host mag toevoegen
-    if not _is_current_user_host():
+    if not is_current_user_host():
         flash("Alleen hosts kunnen de liquiditeit wijzigen.", "error")
         return redirect(url_for("groups.liquiditeit_page"))
 
@@ -301,7 +335,7 @@ def liquiditeit_add():
     omschrijving = request.form.get("description", "Toevoeging")
 
     supabase.table("Liquiditeit").insert({
-        "groep_id": active_group["groep_id"],
+        "groep_id": group_id,
         "bedrag": bedrag,
         "omschrijving": omschrijving
     }).execute()
@@ -320,14 +354,18 @@ def liquiditeit_delete(log_id):
         return redirect(url_for('main.portfolio'))
 
     # Alleen host mag verwijderen
-    if not _is_current_user_host():
+    if not is_current_user_host():
         flash("Alleen hosts kunnen transacties verwijderen.", "error")
         return redirect(url_for("groups.liquiditeit_page"))
+
+    group_id = active_group.get("id") or active_group.get("groep_id")
+    if not group_id:
+        return redirect(url_for('main.portfolio'))
 
     # Zorg dat de log entry bij deze groep hoort
     row = supabase.table("Liquiditeit").select("id,groep_id").eq("id", log_id).limit(1).execute().data
     entry = (row or [None])[0]
-    if not entry or entry.get("groep_id") != active_group["groep_id"]:
+    if not entry or entry.get("groep_id") != group_id:
         flash("Transactie niet gevonden of geen rechten.", "error")
         return redirect(url_for("groups.liquiditeit_page"))
 
@@ -344,14 +382,18 @@ def liquiditeit_remove_amount():
     if not active_group:
         return redirect(url_for('main.portfolio'))
     # Alleen host mag verwijderen
-    if not _is_current_user_host():
+    if not is_current_user_host():
         flash("Alleen hosts kunnen de liquiditeit wijzigen.", "error")
         return redirect(url_for("groups.liquiditeit_page"))
 
     amount = float(request.form["amount"])
 
+    group_id = active_group.get("id") or active_group.get("groep_id")
+    if not group_id:
+        return redirect(url_for('main.portfolio'))
+
     supabase.table("Liquiditeit").insert({
-        "groep_id": active_group["groep_id"],
+        "groep_id": group_id,
         "bedrag": -abs(amount),
         "omschrijving": "Verwijderd via bedrag"
     }).execute()
@@ -367,7 +409,7 @@ def group_settings():
     if not group:
         return redirect(url_for("main.home"))
 
-    is_host = _is_current_user_host()
+    is_host = is_current_user_host()
     
     # Calculate exit cost to show liquiditeitskost
     exit_data = None
@@ -385,7 +427,11 @@ def update_cost_settings():
     if not group:
         return redirect(url_for("groups.group_dashboard"))
 
-    if not _is_current_user_host():
+    group_id = group.get("id") or group.get("groep_id")
+    if not group_id:
+        return redirect(url_for("groups.group_dashboard"))
+
+    if not is_current_user_host():
         return redirect(url_for("groups.group_dashboard"))
 
     instap_nav_pct = safe_float(request.form.get("instap_nav_pct"))
@@ -400,7 +446,7 @@ def update_cost_settings():
         "uitstap_nav_pct": uitstap_nav_pct,
         "uitstap_liq_pct": uitstap_liq_pct,
         "liq_per_lid": liq_per_lid
-    }).eq("groep_id", group["groep_id"]).execute()
+    }).eq("groep_id", group_id).execute()
 
     flash("Instellingen succesvol opgeslagen!", "success")
     return redirect(url_for("groups.group_settings"))
@@ -408,13 +454,13 @@ def update_cost_settings():
 
 @groups_bp.route("/groups/delete", methods=["POST"])
 def delete_group_route():
-    if _is_current_user_host() and session.get("group_id"):
+    if is_current_user_host() and session.get("group_id"):
         delete_group(session["group_id"])
         session.pop("group_id", None)
     return redirect(url_for("main.home"))
 
 @groups_bp.route("/groups/remove-member/<int:member_id>", methods=["POST"])
 def remove_group_member(member_id):
-    if _is_current_user_host() and session.get("group_id"):
+    if is_current_user_host() and session.get("group_id"):
         remove_member_from_group(session["group_id"], member_id)
     return redirect(url_for("groups.group_dashboard"))

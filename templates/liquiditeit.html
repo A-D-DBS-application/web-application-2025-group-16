@@ -1,18 +1,12 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <title>Liquiditeit – Groep</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
+{% extends 'base.html' %}
 
-<body class="bg-slate-50 text-slate-900 px-4 py-6">
+{% block title %}Liquiditeit – Groep{% endblock %}
 
-    {% include '_nav.html' %}
+{% block body_class %}bg-slate-50 text-slate-900{% endblock %}
 
-    <main class="max-w-3xl mx-auto pt-6 space-y-8">
+{% block main_class %}max-w-3xl mx-auto pt-6 space-y-8 px-4{% endblock %}
+
+{% block content %}
 
         
 
@@ -123,11 +117,4 @@
 
         </div>
 
-    </main>
-
-    <script>
-        lucide.createIcons();
-    </script>
-
-</body>
-</html>
+{% endblock %}

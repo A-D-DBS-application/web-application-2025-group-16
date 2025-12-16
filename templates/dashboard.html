@@ -1,25 +1,13 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beleggingsclub Portefeuille</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    
+{% extends 'base.html' %}
+
+{% block title %}Beleggingsclub Portefeuille{% endblock %}
+
+{% block head_extras %}
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="text-slate-800">
+{% endblock %}
 
-    {% include '_nav.html' %}
-
-    <!-- Global Toast Container -->
-    <div id="toast-root" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
-
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+{% block content %}
         
         <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div>
@@ -412,8 +400,6 @@
             </div>
         </div>
 
-    </main>
-
     <div id="trade-modal" class="fixed inset-0 z-40 hidden">
         <div class="absolute inset-0 bg-slate-900/60" data-close-trade></div>
         <div class="relative mx-auto mt-20 w-full max-w-lg px-4">
@@ -486,8 +472,10 @@
         </div>
     </div>
 
-    <script>
-        lucide.createIcons();
+{% endblock %}
+
+{% block scripts %}
+<script>
         const eur = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 
         const SUPABASE_URL = "{{ supabase_url }}";
@@ -2452,6 +2440,5 @@
             console.log('✅ Autocomplete initialized');
         }
         
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}
