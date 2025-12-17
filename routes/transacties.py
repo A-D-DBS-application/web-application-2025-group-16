@@ -2,7 +2,7 @@ from datetime import date
 
 from flask import Blueprint, render_template, request, jsonify, session
 from sqlalchemy import desc, asc
-from models import SessionLocal, Transacties, Portefeuille, Wisselkoersen, Activa
+from models import SessionLocal, Transacties, Portefeuille, Wisselkoersen, Activa, GroepLeden
 from market_data import get_latest_price, get_currency_rate
 from auth import log_portfolio_transaction, get_membership_for_user_in_group
 
@@ -483,5 +483,26 @@ def api_debug_portfolio(group_id: int):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+@transacties_bp.route("/api/groups/<int:group_id>/member_count")
+def api_member_count(group_id: int):
+    """Haal het aantal leden in een groep op."""
+    if "user_id" not in session:
+        return jsonify({"error": "Niet ingelogd"}), 401
+
+    uid = session.get("user_id")
+    ok, mem = get_membership_for_user_in_group(uid, group_id)
+    if not (ok and mem):
+        return jsonify({"error": "Geen toegang tot deze groep"}), 403
+
+    db = SessionLocal()
+    try:
+        # Tel het aantal leden in de groep
+        count = db.query(GroepLeden).filter(GroepLeden.groep_id == group_id).count()
+        return jsonify({"member_count": count})
+    except Exception as e:
+        return jsonify({"error": f"Fout: {str(e)}"}), 500
     finally:
         db.close()
