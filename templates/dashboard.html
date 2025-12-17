@@ -14,7 +14,7 @@
         padding: 0.25rem;
         gap: 0.25rem;
     }
-    
+
     .view-toggle-btn {
         padding: 0.5rem 0.75rem;
         border-radius: 0.375rem;
@@ -29,16 +29,16 @@
         font-size: 0.875rem;
         font-weight: 500;
     }
-    
+
     .view-toggle-btn:hover {
         background: #f8fafc;
     }
-    
+
     .view-toggle-btn.active {
         background: #3b82f6;
         color: white;
     }
-    
+
     .view-toggle-btn svg {
         width: 1rem;
         height: 1rem;
@@ -280,6 +280,13 @@
                         placeholder="€ 0,00" {{ builder_disabled }}>
                 </div>
             </div>
+
+            <div>
+                <label class="form-label">Transactiedatum</label>
+                <input id="cash-transfer-date" type="date" class="form-input" {{ builder_disabled }}>
+                <div class="text-[11px] mt-1 text-slate-400">Standaard vandaag; pas aan indien nodig.</div>
+            </div>
+
             <div id="cash-transfer-description-row" class="hidden">
                 <label class="form-label">Beschrijving (optioneel voor kas)</label>
                 <input id="cash-transfer-description" type="text" class="form-input" placeholder="bv. cash storting" {{
@@ -319,13 +326,15 @@
     <div class="view-toggle">
         <button class="view-toggle-btn active" id="view-total-btn" title="Totale waarde">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span>Totaal</span>
         </button>
         <button class="view-toggle-btn" id="view-per-member-btn" title="Waarde per lid">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
             <span>Per Lid</span>
         </button>
@@ -567,6 +576,7 @@
     const cashTransferTarget = document.getElementById('cash-transfer-target');
     const cashTransferDirection = document.getElementById('cash-transfer-direction');
     const cashTransferAmount = document.getElementById('cash-transfer-amount');
+    const cashTransferDate = document.getElementById('cash-transfer-date');
     const cashTransferDescription = document.getElementById('cash-transfer-description');
     const cashTransferDescriptionRow = document.getElementById('cash-transfer-description-row');
     const cashTransferStatus = document.getElementById('cash-transfer-status');
@@ -604,6 +614,17 @@
         currencyInput.value = currencyInput.value.toUpperCase();
     });
     if (cashTransferTarget) cashTransferTarget.addEventListener('change', () => toggleCashTargetUI(cashTransferTarget.value));
+
+    // Initialize all date inputs with today's date
+    (function initializeDateInputs() {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+        if (transactionDateInput) transactionDateInput.value = today;
+        if (cashTransferDate) cashTransferDate.value = today;
+    })();
+
     if (tradeForm) tradeForm.addEventListener('submit', handleTradeSubmit);
 
     tradeCloseButtons.forEach(btn => btn.addEventListener('click', closeTradeModal));
@@ -791,12 +812,6 @@
     }
 
     loadDashboardSnapshot();
-    if (transactionDateInput) {
-        const now = new Date();
-        const pad = n => String(n).padStart(2, '0');
-        const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-        transactionDateInput.value = local;
-    }
 
     function isCashRow(row) {
         return ((row && row.ticker) ? String(row.ticker) : '').toUpperCase() === 'CASH';
@@ -918,6 +933,7 @@
         const t = (txnTypeSelect?.value || 'BUY').toUpperCase();
         const labelMap = { 'BUY': 'Aankoop', 'SELL': 'Verkoop', 'DIVIDEND': 'Dividend', 'TRANSFER': 'Overschrijving', 'PAYOUT': 'Uitbetaling effecten' };
         const tradableTypes = ['BUY', 'SELL', 'DIVIDEND', 'PAYOUT'];
+
         if (tradableTypes.includes(t)) {
             const isDividend = t === 'DIVIDEND';
             const isSell = t === 'SELL';
@@ -974,6 +990,15 @@
             buySection?.classList.add('hidden');
             txnPlaceholder?.classList.add('hidden');
             cashSection?.classList.remove('hidden');
+
+            // Re-initialize cash transfer date when switching to TRANSFER mode
+            if (cashTransferDate) {
+                const now = new Date();
+                const pad = n => String(n).padStart(2, '0');
+                const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                cashTransferDate.value = today;
+            }
+
             if (cashTransferTarget) {
                 cashTransferTarget.value = 'portfolio';
                 toggleCashTargetUI(cashTransferTarget.value);
@@ -1073,7 +1098,7 @@
             if (em) em.classList.remove('hidden');
         }
     }
-    
+
     async function augmentPortfolioCurrencies(rows) {
         if (!Array.isArray(rows) || rows.length === 0) return rows;
         const result = [];
@@ -1129,7 +1154,7 @@
         }
         return result;
     }
-    
+
     async function fetchRealizedProfit() {
         try {
             if (!ACTIVE_GROUP_ID || !realizedProfitEl) return;
@@ -1257,7 +1282,7 @@
 
         // Update displayed values based on current view mode
         updateDisplayedValues();
-        
+
         // Update position count (not affected by view mode)
         document.getElementById('position-count').innerText = data.position_count || 0;
 
@@ -1728,942 +1753,956 @@
             if (qty > 0) {
                 const localTotal = isEur ? totalEur : (wkVal > 0 ? (totalEur * wkVal) : 0);
                 tradePrice = (localTotal / qty);
-}
-}
-    const dateStr = (transactionDateInput?.value || '').trim() || '—';
-    const typeLabelMap = { BUY: 'Aankoop', SELL: 'Verkoop', DIVIDEND: 'Dividend', PAYOUT: 'Uitbetaling' };
-    const typeLabel = typeLabelMap[t] || t;
-    const totalLabelLocal = t === 'BUY' ? 'Totaal (eigen munt)' : ((t === 'SELL' || t === 'PAYOUT') ? 'Netto (eigen munt)' : 'Totaal (eigen munt)');
-    const totalValueLocal = t === 'BUY' ? (grossLocal + feeAmount) : ((t === 'SELL' || t === 'PAYOUT') ? (grossLocal - feeAmount) : grossLocal);
-    const summary = [
-        `Transactietype: ${typeLabel}`,
-        `Ticker: ${symbol}`,
-        `Aantal: ${qty}`,
-        `Koers: ${tradePrice.toFixed(2)} ${selectedCurrency}`,
-        `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
-        `${t === 'DIVIDEND' ? '' : `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`}`,
-        `${totalLabelLocal}: ${totalValueLocal.toFixed(2)} ${selectedCurrency}`,
-        `Totaal (EUR): ${totalEur.toFixed(2)} EUR`,
-        `Transactiedatum: ${dateStr}`
-    ].join('\n');
-    const confirmMsg = `${summary}\n\nBen je zeker dat je deze transactie wil opslaan?`;
-    const ok = window.confirm(confirmMsg);
-    if (!ok) {
-        setFormStatus('Opslaan geannuleerd', 'info');
-        return;
-    }
-
-    const priceNow = tradePrice;
-    setFormStatus('Opslaan...', 'info');
-
-    let existingRows = null;
-    let fallbackError = null;
-    let holding = findCurrentHolding(symbol);
-    if (!holding) {
-        const { data: rows, error: existErr } = await supabaseClient
-            .from('Portefeuille')
-            .select('port_id, quantity, avg_price, transactiekost')
-            .eq('groep_id', ACTIVE_GROUP_ID)
-            .eq('ticker', symbol)
-            .order('port_id', { ascending: false })
-            .limit(1);
-        fallbackError = existErr;
-        existingRows = rows;
-        if (rows && rows.length) {
-            holding = {
-                port_id: rows[0].port_id,
-                quantity: rows[0].quantity,
-                avg_price: rows[0].avg_price,
-                transactiekost: rows[0].transactiekost,
-            };
+            }
         }
-    }
+        const dateStr = (transactionDateInput?.value || '').trim() || '—';
+        const typeLabelMap = { BUY: 'Aankoop', SELL: 'Verkoop', DIVIDEND: 'Dividend', PAYOUT: 'Uitbetaling' };
+        const typeLabel = typeLabelMap[t] || t;
+        const totalLabelLocal = t === 'BUY' ? 'Totaal (eigen munt)' : ((t === 'SELL' || t === 'PAYOUT') ? 'Netto (eigen munt)' : 'Totaal (eigen munt)');
+        const totalValueLocal = t === 'BUY' ? (grossLocal + feeAmount) : ((t === 'SELL' || t === 'PAYOUT') ? (grossLocal - feeAmount) : grossLocal);
+        const summary = [
+            `Transactietype: ${typeLabel}`,
+            `Ticker: ${symbol}`,
+            `Aantal: ${qty}`,
+            `Koers: ${tradePrice.toFixed(2)} ${selectedCurrency}`,
+            `Bruto: ${grossLocal.toFixed(2)} ${selectedCurrency}`,
+            `${t === 'DIVIDEND' ? '' : `Kosten (eigen munt): ${feeAmount.toFixed(2)} ${selectedCurrency}`}`,
+            `${totalLabelLocal}: ${totalValueLocal.toFixed(2)} ${selectedCurrency}`,
+            `Totaal (EUR): ${totalEur.toFixed(2)} EUR`,
+            `Transactiedatum: ${dateStr}`
+        ].join('\n');
+        const confirmMsg = `${summary}\n\nBen je zeker dat je deze transactie wil opslaan?`;
+        const ok = window.confirm(confirmMsg);
+        if (!ok) {
+            setFormStatus('Opslaan geannuleerd', 'info');
+            return;
+        }
 
-    if (!holding && fallbackError) {
-        setFormStatus(fallbackError.message || 'Controle op bestaande positie mislukt', 'error');
-        return;
-    }
+        const priceNow = tradePrice;
+        setFormStatus('Opslaan...', 'info');
 
-    let insertedPortId = null;
-    if (t === 'DIVIDEND') {
+        let existingRows = null;
+        let fallbackError = null;
+        let holding = findCurrentHolding(symbol);
         if (!holding) {
-            setFormStatus('Geen bestaande positie voor dit dividend.', 'error');
-            return;
+            const { data: rows, error: existErr } = await supabaseClient
+                .from('Portefeuille')
+                .select('port_id, quantity, avg_price, transactiekost')
+                .eq('groep_id', ACTIVE_GROUP_ID)
+                .eq('ticker', symbol)
+                .order('port_id', { ascending: false })
+                .limit(1);
+            fallbackError = existErr;
+            existingRows = rows;
+            if (rows && rows.length) {
+                holding = {
+                    port_id: rows[0].port_id,
+                    quantity: rows[0].quantity,
+                    avg_price: rows[0].avg_price,
+                    transactiekost: rows[0].transactiekost,
+                };
+            }
         }
-        insertedPortId = holding.port_id;
-    } else if (t === 'BUY' && holding) {
-        const prevQty = Number(holding.quantity) || 0;
-        const prevAvg = Number(holding.avg_price) || 0;
-        const prevFee = Number(holding.transactiekost) || 0;
-        const newQty = prevQty + qty;
-        if (newQty <= 0) {
-            setFormStatus('Aantal moet groter dan 0 zijn', 'error');
-            return;
-        }
-        const newAvg = ((prevQty * prevAvg) + (qty * priceEur)) / newQty;
-        const newFee = prevFee + feeAmountEur;
 
-        const { error: updError } = await supabaseClient
-            .from('Portefeuille')
-            .update({
-                quantity: newQty,
-                avg_price: newAvg,
-                transactiekost: newFee
-            })
-            .eq('groep_id', ACTIVE_GROUP_ID)
-            .eq('port_id', holding.port_id);
-        if (updError) {
-            setFormStatus(updError.message || 'Bijwerken bestaande positie mislukt', 'error');
+        if (!holding && fallbackError) {
+            setFormStatus(fallbackError.message || 'Controle op bestaande positie mislukt', 'error');
             return;
         }
-        insertedPortId = holding.port_id;
-    } else if (t === 'BUY') {
-        const payload = {
+
+        let insertedPortId = null;
+        if (t === 'DIVIDEND') {
+            if (!holding) {
+                setFormStatus('Geen bestaande positie voor dit dividend.', 'error');
+                return;
+            }
+            insertedPortId = holding.port_id;
+        } else if (t === 'BUY' && holding) {
+            const prevQty = Number(holding.quantity) || 0;
+            const prevAvg = Number(holding.avg_price) || 0;
+            const prevFee = Number(holding.transactiekost) || 0;
+            const newQty = prevQty + qty;
+            if (newQty <= 0) {
+                setFormStatus('Aantal moet groter dan 0 zijn', 'error');
+                return;
+            }
+            const newAvg = ((prevQty * prevAvg) + (qty * priceEur)) / newQty;
+            const newFee = prevFee + feeAmountEur;
+
+            const { error: updError } = await supabaseClient
+                .from('Portefeuille')
+                .update({
+                    quantity: newQty,
+                    avg_price: newAvg,
+                    transactiekost: newFee
+                })
+                .eq('groep_id', ACTIVE_GROUP_ID)
+                .eq('port_id', holding.port_id);
+            if (updError) {
+                setFormStatus(updError.message || 'Bijwerken bestaande positie mislukt', 'error');
+                return;
+            }
+            insertedPortId = holding.port_id;
+        } else if (t === 'BUY') {
+            const payload = {
+                ticker: symbol,
+                quantity: qty,
+                avg_price: priceEur,
+                transactiekost: feeAmountEur,
+                name: lastQuote?.longName || lastQuote?.shortName || null,
+                sector: lastQuote?.sector || null,
+                currency: selectedCurrency
+            };
+            let response;
+            let result = {};
+            try {
+                response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/portfolio/positions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+                try {
+                    result = await response.json();
+                } catch (_) {
+                    result = {};
+                }
+            } catch (networkError) {
+                setFormStatus(networkError.message || 'Opslaan mislukt', 'error');
+                return;
+            }
+            if (!response?.ok) {
+                setFormStatus(result?.error || 'Opslaan mislukt', 'error');
+                return;
+            }
+            const created = result?.position || {};
+            insertedPortId = created.port_id || null;
+            if (!holding) {
+                holding = {
+                    port_id: insertedPortId,
+                    quantity: created.quantity ?? qty,
+                    avg_price: created.avg_price ?? priceEur,
+                    transactiekost: created.transactiekost ?? feeAmountEur
+                };
+            }
+        } else if (t === 'SELL' || t === 'PAYOUT') {
+            if (!holding) {
+                setFormStatus('Geen bestaande positie om te verkopen', 'error');
+                return;
+            }
+            const prevQty = Number(holding.quantity) || 0;
+            if (qty > prevQty) {
+                setFormStatus('Niet genoeg aandelen om te verkopen.', 'error');
+                return;
+            }
+            const newQty = prevQty - qty;
+            const prevFee = Number(holding.transactiekost) || 0;
+            const newFee = prevFee + feeAmount;
+            const { error: updSellErr } = await supabaseClient
+                .from('Portefeuille')
+                .update({
+                    quantity: newQty,
+                    transactiekost: newFee
+                })
+                .eq('groep_id', ACTIVE_GROUP_ID)
+                .eq('port_id', holding.port_id);
+            if (updSellErr) {
+                setFormStatus(updSellErr.message || 'Bijwerken positie (verkoop) mislukt', 'error');
+                return;
+            }
+            insertedPortId = holding.port_id;
+        }
+
+        const nextCash = t === 'BUY' ? (cashAvailable - totalEur) : (cashAvailable + totalEur);
+        const cashUpdateOk = await updateCashBalance(nextCash);
+        if (!cashUpdateOk) {
+            if (holding) {
+                await supabaseClient
+                    .from('Portefeuille')
+                    .update({
+                        quantity: holding.quantity,
+                        avg_price: holding.avg_price,
+                        transactiekost: holding.transactiekost
+                    })
+                    .eq('groep_id', ACTIVE_GROUP_ID)
+                    .eq('port_id', holding.port_id);
+            } else if (insertedPortId) {
+                await supabaseClient
+                    .from('Portefeuille')
+                    .delete()
+                    .eq('groep_id', ACTIVE_GROUP_ID)
+                    .eq('port_id', insertedPortId);
+            }
+            try {
+                await fetch('/api/cash/set_balance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ amount: cashAvailable })
+                });
+            } catch (_) { }
+            if (!lastCashRow) lastCashRow = {};
+            lastCashRow.current_price = cashAvailable;
+            updateCashCard(cashAvailable);
+            setFormStatus('Cash bijwerken mislukt. Probeer opnieuw.', 'error');
+            return;
+        }
+
+        if (lastCashRow) lastCashRow.current_price = nextCash;
+        const wkForLog = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
+        const primaryLog = await logTransaction({
+            type: t,
             ticker: symbol,
-            quantity: qty,
-            avg_price: priceEur,
-            transactiekost: feeAmountEur,
-            name: lastQuote?.longName || lastQuote?.shortName || null,
-            sector: lastQuote?.sector || null,
-            currency: selectedCurrency
+            aantal: qty,
+            koers: priceNow,
+            wisselkoers: wkForLog,
+            munt: selectedCurrency,
+            datum_tr: (transactionDateInput?.value || null),
+            portefeuille_id: insertedPortId
+        }, 'transactie');
+
+        let logIssue = primaryLog.ok ? null : (primaryLog.error || 'Loggen mislukt');
+        if (primaryLog.ok && (t === 'BUY' || t === 'SELL') && feeAmount && feeAmount > 0) {
+            const feeLog = await logTransaction({
+                type: 'FEE',
+                ticker: symbol,
+                aantal: 1,
+                koers: feeAmount,
+                wisselkoers: wkForLog,
+                munt: selectedCurrency,
+                datum_tr: (transactionDateInput?.value || null),
+                portefeuille_id: insertedPortId
+            }, 'kost');
+            if (!feeLog.ok) {
+                logIssue = feeLog.error || 'Loggen van kosten mislukt';
+            }
+        }
+
+        const successMap = {
+            BUY: 'Aankoop opgeslagen',
+            SELL: 'Verkoop opgeslagen',
+            DIVIDEND: 'Dividend opgeslagen',
+            PAYOUT: 'Uitbetaling opgeslagen'
         };
-        let response;
-        let result = {};
+        if (!logIssue && selectedCurrency && selectedCurrency !== 'EUR') {
+            await ensureExchangeRate(selectedCurrency);
+        }
+
+        if (logIssue) {
+            setFormStatus(`Transactie verwerkt maar loggen faalde: ${logIssue}`, 'warning');
+        } else {
+            setFormStatus(successMap[t] || 'Transactie opgeslagen', 'success');
+        }
+        if (positionForm) positionForm.reset();
+        if (txnTypeSelect) updateTransactionUI();
+        clearQuoteSummary();
+        fetchPortfolio();
+    }
+
+    async function logTransaction(payload, contextLabel = 'transactie') {
         try {
-            response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/portfolio/positions`, {
+            const response = await fetch('/api/transactions/log', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
                 body: JSON.stringify(payload)
             });
+            let data = {};
             try {
-                result = await response.json();
-            } catch (_) {
-                result = {};
+                data = await response.json();
+            } catch { }
+            if (!response.ok) {
+                const message = (data && data.error) ? data.error : `${contextLabel} log mislukt`;
+                return { ok: false, error: message };
             }
-        } catch (networkError) {
-            setFormStatus(networkError.message || 'Opslaan mislukt', 'error');
-            return;
+            return { ok: true, data };
+        } catch (error) {
+            console.warn(`Loggen van ${contextLabel} fout`, error);
+            return { ok: false, error: error.message || `${contextLabel} log fout` };
         }
-        if (!response?.ok) {
-            setFormStatus(result?.error || 'Opslaan mislukt', 'error');
-            return;
-        }
-        const created = result?.position || {};
-        insertedPortId = created.port_id || null;
-        if (!holding) {
-            holding = {
-                port_id: insertedPortId,
-                quantity: created.quantity ?? qty,
-                avg_price: created.avg_price ?? priceEur,
-                transactiekost: created.transactiekost ?? feeAmountEur
-            };
-        }
-    } else if (t === 'SELL' || t === 'PAYOUT') {
-        if (!holding) {
-            setFormStatus('Geen bestaande positie om te verkopen', 'error');
-            return;
-        }
-        const prevQty = Number(holding.quantity) || 0;
-        if (qty > prevQty) {
-            setFormStatus('Niet genoeg aandelen om te verkopen.', 'error');
-            return;
-        }
-        const newQty = prevQty - qty;
-        const prevFee = Number(holding.transactiekost) || 0;
-        const newFee = prevFee + feeAmount;
-        const { error: updSellErr } = await supabaseClient
-            .from('Portefeuille')
-            .update({
-                quantity: newQty,
-                transactiekost: newFee
-            })
-            .eq('groep_id', ACTIVE_GROUP_ID)
-            .eq('port_id', holding.port_id);
-        if (updSellErr) {
-            setFormStatus(updSellErr.message || 'Bijwerken positie (verkoop) mislukt', 'error');
-            return;
-        }
-        insertedPortId = holding.port_id;
     }
 
-    const nextCash = t === 'BUY' ? (cashAvailable - totalEur) : (cashAvailable + totalEur);
-    const cashUpdateOk = await updateCashBalance(nextCash);
-    if (!cashUpdateOk) {
-        if (holding) {
-            await supabaseClient
-                .from('Portefeuille')
-                .update({
-                    quantity: holding.quantity,
-                    avg_price: holding.avg_price,
-                    transactiekost: holding.transactiekost
-                })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('port_id', holding.port_id);
-        } else if (insertedPortId) {
-            await supabaseClient
-                .from('Portefeuille')
-                .delete()
-                .eq('groep_id', ACTIVE_GROUP_ID)
-                .eq('port_id', insertedPortId);
-        }
+    async function ensureExchangeRate(currencyCode) {
+        const code = String(currencyCode || '').trim().toUpperCase();
+        if (!code || code === 'EUR') return;
         try {
-            await fetch('/api/cash/set_balance', {
+            await fetch('/api/refresh-wk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ amount: cashAvailable })
+                body: JSON.stringify({ currencies: [code] })
             });
-        } catch (_) { }
-        if (!lastCashRow) lastCashRow = {};
-        lastCashRow.current_price = cashAvailable;
-        updateCashCard(cashAvailable);
-        setFormStatus('Cash bijwerken mislukt. Probeer opnieuw.', 'error');
-        return;
-    }
-
-    if (lastCashRow) lastCashRow.current_price = nextCash;
-    const wkForLog = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
-    const primaryLog = await logTransaction({
-        type: t,
-        ticker: symbol,
-        aantal: qty,
-        koers: priceNow,
-        wisselkoers: wkForLog,
-        munt: selectedCurrency,
-        datum_tr: (transactionDateInput?.value || null),
-        portefeuille_id: insertedPortId
-    }, 'transactie');
-
-    let logIssue = primaryLog.ok ? null : (primaryLog.error || 'Loggen mislukt');
-    if (primaryLog.ok && (t === 'BUY' || t === 'SELL') && feeAmount && feeAmount > 0) {
-        const feeLog = await logTransaction({
-            type: 'FEE',
-            ticker: symbol,
-            aantal: 1,
-            koers: feeAmount,
-            wisselkoers: wkForLog,
-            munt: selectedCurrency,
-            datum_tr: (transactionDateInput?.value || null),
-            portefeuille_id: insertedPortId
-        }, 'kost');
-        if (!feeLog.ok) {
-            logIssue = feeLog.error || 'Loggen van kosten mislukt';
+        } catch (err) {
+            console.warn('Wisselkoers synchronisatie mislukt', err);
         }
     }
 
-    const successMap = {
-        BUY: 'Aankoop opgeslagen',
-        SELL: 'Verkoop opgeslagen',
-        DIVIDEND: 'Dividend opgeslagen',
-        PAYOUT: 'Uitbetaling opgeslagen'
-    };
-    if (!logIssue && selectedCurrency && selectedCurrency !== 'EUR') {
-        await ensureExchangeRate(selectedCurrency);
+    async function processCashTransfer() {
+        if (!IS_HOST) {
+            setFormStatus('Alleen hosts kunnen cash verplaatsen', 'error');
+            updateTransferStatus({ mode: 'error', message: 'Geen rechten om op te slaan' });
+            return;
+        }
+        const direction = (cashTransferDirection?.value === 'out') ? 'out' : 'in';
+        const target = (cashTransferTarget?.value === 'kas') ? 'kas' : 'portfolio';
+        const rawAmount = parseFloat(cashTransferAmount?.value || '0');
+        const dateValue = cashTransferDate?.value || null; // Get the date value
+
+        if (!rawAmount || rawAmount <= 0) {
+            setFormStatus('Bedrag moet groter dan 0 zijn', 'error');
+            updateTransferStatus({ mode: 'error', message: 'Bedrag moet groter dan 0 zijn' });
+            return;
+        }
+
+        const targetLabel = target === 'kas' ? 'Kas' : 'Portefeuille cash';
+        const directionLabel = direction === 'in' ? 'Storting (+)' : 'Opname (-)';
+        const overview = [
+            `Transactietype: Overschrijving`,
+            `Doel: ${targetLabel}`,
+            `Richting: ${directionLabel}`,
+            `Bedrag: ${eur.format(rawAmount)}`,
+            `Transactiedatum: ${dateValue || '—'}`
+        ].join('\n');
+
+        const confirmed = window.confirm(`${overview}\n\nBen je zeker dat je deze overschrijving wil opslaan?`);
+        if (!confirmed) {
+            setFormStatus('Opslaan geannuleerd', 'info');
+            updateTransferStatus({ mode: 'idle' });
+            return;
+        }
+
+        setFormStatus('Cash bijwerken...', 'info');
+        updateTransferStatus({ mode: 'saving' });
+
+        try {
+            const transfer = await postCashTransfer({
+                amount: rawAmount,
+                direction,
+                target,
+                dateValue: dateValue, // Pass the date value
+                description: cashTransferDescription?.value || null
+            });
+
+            if (target === 'portfolio') {
+                const next = Number(transfer.balance) || 0;
+                if (!lastCashRow) lastCashRow = {};
+                lastCashRow.current_price = next;
+                if (transfer?.transaction?.portefeuille_id) {
+                    lastCashRow.port_id = transfer.transaction.portefeuille_id;
+                }
+                updateCashCard(next);
+                setFormStatus(direction === 'in' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
+                updateTransferStatus({
+                    mode: 'success',
+                    message: direction === 'in' ? 'Storting opgeslagen' : 'Opname opgeslagen'
+                });
+                await fetchPortfolio();
+            } else {
+                const kasNextRaw = Number(transfer.kas_balance);
+                const kasNext = Number.isFinite(kasNextRaw) ? kasNextRaw : 0;
+                const kasLabel = Number.isFinite(kasNextRaw) ? kasNext.toFixed(2) : 'Onbekend';
+                latestKasBalance = Number.isFinite(kasNextRaw) ? kasNext : latestKasBalance;
+                setFormStatus(direction === 'in' ? 'Kas aangevuld' : 'Kas opname geregistreerd', 'success');
+                showToast(`Kas bijgewerkt. Nieuw saldo: € ${kasLabel}`, 'success', 2800);
+                updateTransferStatus({
+                    mode: 'success',
+                    message: direction === 'in' ? 'Kasstorting opgeslagen' : 'Kasopname opgeslagen'
+                });
+            }
+
+            if (cashTransferAmount) cashTransferAmount.value = '';
+            if (cashTransferDescription) cashTransferDescription.value = '';
+            // Reset date to today after successful transfer
+            if (cashTransferDate) {
+                const now = new Date();
+                const pad = n => String(n).padStart(2, '0');
+                const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+                cashTransferDate.value = local;
+            }
+        } catch (err) {
+            console.error('Cash transfer mislukt', err);
+            setFormStatus(err.message || 'Cash bijwerken mislukt', 'error');
+            updateTransferStatus({ mode: 'error', message: err.message || 'Opslaan mislukt' });
+        }
     }
 
-    if (logIssue) {
-        setFormStatus(`Transactie verwerkt maar loggen faalde: ${logIssue}`, 'warning');
-    } else {
-        setFormStatus(successMap[t] || 'Transactie opgeslagen', 'success');
-    }
-    if (positionForm) positionForm.reset();
-    if (txnTypeSelect) updateTransactionUI();
-    clearQuoteSummary();
-    fetchPortfolio();
-}
-
-async function logTransaction(payload, contextLabel = 'transactie') {
-    try {
-        const response = await fetch('/api/transactions/log', {
+    async function postCashTransfer({ amount, direction, target, dateValue, description }) {
+        const payload = {
+            amount,
+            direction,
+            target,
+            date: dateValue || null
+        };
+        if (description) payload.description = description;
+        const response = await fetch('/api/cash/transfer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
             body: JSON.stringify(payload)
         });
         let data = {};
         try {
             data = await response.json();
-        } catch { }
-        if (!response.ok) {
-            const message = (data && data.error) ? data.error : `${contextLabel} log mislukt`;
-            return { ok: false, error: message };
-        }
-        return { ok: true, data };
-    } catch (error) {
-        console.warn(`Loggen van ${contextLabel} fout`, error);
-        return { ok: false, error: error.message || `${contextLabel} log fout` };
-    }
-}
-
-async function ensureExchangeRate(currencyCode) {
-    const code = String(currencyCode || '').trim().toUpperCase();
-    if (!code || code === 'EUR') return;
-    try {
-        await fetch('/api/refresh-wk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ currencies: [code] })
-        });
-    } catch (err) {
-        console.warn('Wisselkoers synchronisatie mislukt', err);
-    }
-}
-
-async function processCashTransfer() {
-    if (!IS_HOST) {
-        setFormStatus('Alleen hosts kunnen cash verplaatsen', 'error');
-        updateTransferStatus({ mode: 'error', message: 'Geen rechten om op te slaan' });
-        return;
-    }
-    const direction = (cashTransferDirection?.value === 'out') ? 'out' : 'in';
-    const target = (cashTransferTarget?.value === 'kas') ? 'kas' : 'portfolio';
-    const rawAmount = parseFloat(cashTransferAmount?.value || '0');
-    if (!rawAmount || rawAmount <= 0) {
-        setFormStatus('Bedrag moet groter dan 0 zijn', 'error');
-        updateTransferStatus({ mode: 'error', message: 'Bedrag moet groter dan 0 zijn' });
-        return;
-    }
-    const targetLabel = target === 'kas' ? 'Kas' : 'Portefeuille cash';
-    const directionLabel = direction === 'in' ? 'Storting (+)' : 'Opname (-)';
-    const dateValue = transactionDateInput?.value || '—';
-    const overview = [
-        `Transactietype: Overschrijving`,
-        `Doel: ${targetLabel}`,
-        `Richting: ${directionLabel}`,
-        `Bedrag: ${eur.format(rawAmount)}`,
-        `Transactiedatum: ${dateValue}`
-    ].join('\n');
-    const confirmed = window.confirm(`${overview}\n\nBen je zeker dat je deze overschrijving wil opslaan?`);
-    if (!confirmed) {
-        setFormStatus('Opslaan geannuleerd', 'info');
-        updateTransferStatus({ mode: 'idle' });
-        return;
-    }
-    setFormStatus('Cash bijwerken...', 'info');
-    updateTransferStatus({ mode: 'saving' });
-    try {
-        const transfer = await postCashTransfer({
-            amount: rawAmount,
-            direction,
-            target,
-            dateValue: transactionDateInput?.value || null,
-            description: cashTransferDescription?.value || null
-        });
-        if (target === 'portfolio') {
-            const next = Number(transfer.balance) || 0;
-            if (!lastCashRow) lastCashRow = {};
-            lastCashRow.current_price = next;
-            if (transfer?.transaction?.portefeuille_id) {
-                lastCashRow.port_id = transfer.transaction.portefeuille_id;
-            }
-            updateCashCard(next);
-            setFormStatus(direction === 'in' ? 'Cash toegevoegd' : 'Cash opgenomen', 'success');
-            updateTransferStatus({
-                mode: 'success',
-                message: direction === 'in' ? 'Storting opgeslagen' : 'Opname opgeslagen'
-            });
-            await fetchPortfolio();
-        } else {
-            const kasNextRaw = Number(transfer.kas_balance);
-            const kasNext = Number.isFinite(kasNextRaw) ? kasNextRaw : 0;
-            const kasLabel = Number.isFinite(kasNextRaw) ? kasNext.toFixed(2) : 'Onbekend';
-            latestKasBalance = Number.isFinite(kasNextRaw) ? kasNext : latestKasBalance;
-            setFormStatus(direction === 'in' ? 'Kas aangevuld' : 'Kas opname geregistreerd', 'success');
-            showToast(`Kas bijgewerkt. Nieuw saldo: € ${kasLabel}`, 'success', 2800);
-            updateTransferStatus({
-                mode: 'success',
-                message: direction === 'in' ? 'Kasstorting opgeslagen' : 'Kasopname opgeslagen'
-            });
-        }
-        if (cashTransferAmount) cashTransferAmount.value = '';
-        if (cashTransferDescription) cashTransferDescription.value = '';
-    } catch (err) {
-        console.error('Cash transfer mislukt', err);
-        setFormStatus(err.message || 'Cash bijwerken mislukt', 'error');
-        updateTransferStatus({ mode: 'error', message: err.message || 'Opslaan mislukt' });
-    }
-}
-
-async function postCashTransfer({ amount, direction, target, dateValue, description }) {
-    const payload = {
-        amount,
-        direction,
-        target,
-        date: dateValue || null
-    };
-    if (description) payload.description = description;
-    const response = await fetch('/api/cash/transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    let data = {};
-    try {
-        data = await response.json();
-    } catch (_) { }
-    if (!response.ok) {
-        throw new Error(data?.error || 'Cash bijwerken mislukt');
-    }
-    return data;
-}
-
-async function updateCashBalance(nextAmount) {
-    try {
-        const response = await fetch('/api/cash/set_balance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ amount: nextAmount })
-        });
-        const data = await response.json();
+        } catch (_) { }
         if (!response.ok) {
             throw new Error(data?.error || 'Cash bijwerken mislukt');
         }
-        const balance = Number(data?.balance ?? nextAmount);
-        if (!Number.isFinite(balance)) {
-            throw new Error('Ongeldige cash waarde ontvangen');
+        return data;
+    }
+
+    async function updateCashBalance(nextAmount) {
+        try {
+            const response = await fetch('/api/cash/set_balance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ amount: nextAmount })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.error || 'Cash bijwerken mislukt');
+            }
+            const balance = Number(data?.balance ?? nextAmount);
+            if (!Number.isFinite(balance)) {
+                throw new Error('Ongeldige cash waarde ontvangen');
+            }
+            if (!lastCashRow) lastCashRow = {};
+            lastCashRow.current_price = balance;
+            if (data?.port_id) lastCashRow.port_id = data.port_id;
+            updateCashCard(balance);
+            return true;
+        } catch (error) {
+            console.error('Cash update mislukt', error);
+            return false;
         }
-        if (!lastCashRow) lastCashRow = {};
-        lastCashRow.current_price = balance;
-        if (data?.port_id) lastCashRow.port_id = data.port_id;
-        updateCashCard(balance);
-        return true;
-    } catch (error) {
-        console.error('Cash update mislukt', error);
-        return false;
-    }
-}
-
-function handleTableAction(event) {
-    const aiBtn = event.target.closest('.ai-analyze-stock');
-    if (aiBtn) {
-        event.preventDefault();
-        const ticker = aiBtn.dataset.ticker;
-        if (ticker) analyzeStock(ticker);
-        return;
     }
 
-    if (!ACTIVE_GROUP_ID) return;
-    const buyBtn = event.target.closest('.buy-position');
-    if (buyBtn) {
-        event.preventDefault();
-        openTradeModal('buy', buyBtn.dataset);
-        return;
-    }
-    const sellBtn = event.target.closest('.sell-position');
-    if (sellBtn) {
-        event.preventDefault();
-        openTradeModal('sell', sellBtn.dataset);
-    }
-}
-
-function openTradeModal(mode, dataset) {
-    if (!tradeModal) return;
-    tradeContext = {
-        mode,
-        positionId: dataset.positionId || '',
-        ticker: dataset.ticker || '',
-        quantity: Number(dataset.quantity) || 0,
-        avgPrice: Number(dataset.avgPrice) || 0,
-        price: Number(dataset.price) || 0,
-        fee: Number(dataset.fee) || 0
-    };
-    if (tradeTitle) {
-        tradeTitle.textContent = mode === 'buy' ? `Kopen ${tradeContext.ticker}` : `Verkopen ${tradeContext.ticker}`;
-    }
-    if (tradeTickerEl) {
-        tradeTickerEl.textContent = tradeContext.ticker || '—';
-    }
-    if (tradeInfoEl) {
-        tradeInfoEl.textContent = mode === 'buy'
-            ? `Beschikbare cash: ${eur.format(Number(lastCashRow?.current_price) || 0)}`
-            : `Beschikbare aandelen: ${tradeContext.quantity}`;
-    }
-    if (tradeQtyInput) tradeQtyInput.value = '';
-    if (tradePriceInput) tradePriceInput.value = tradeContext.price || '';
-    if (tradeFeeInput) tradeFeeInput.value = transactionCostInput?.value || '';
-    if (tradeSubmitBtn) {
-        tradeSubmitBtn.textContent = mode === 'buy' ? 'Koop bevestigen' : 'Verkoop bevestigen';
-    }
-    setTradeStatus('Vul de velden in en bevestig.', 'info');
-    tradeModal.classList.remove('hidden');
-}
-
-function closeTradeModal() {
-    if (!tradeModal) return;
-    tradeModal.classList.add('hidden');
-    tradeContext = null;
-}
-
-function setTradeStatus(message, type = 'info') {
-    if (!tradeStatusEl) return;
-    const colors = {
-        info: 'text-slate-400',
-        success: 'text-emerald-600',
-        error: 'text-rose-600'
-    };
-    tradeStatusEl.textContent = message;
-    tradeStatusEl.className = 'text-xs ' + (colors[type] || colors.info);
-}
-
-function applyPositionFilter(query) {
-    if (tradeContext?.positionId) {
-        return query.eq('port_id', tradeContext.positionId);
-    }
-    return query.eq('ticker', tradeContext?.ticker || '');
-}
-
-async function handleTradeSubmit(event) {
-    event.preventDefault();
-    if (!tradeContext) {
-        setTradeStatus('Geen positie geselecteerd', 'error');
-        return;
-    }
-    if (!tradeContext.positionId && !tradeContext.ticker) {
-        setTradeStatus('Kon positie niet laden', 'error');
-        return;
-    }
-    const qty = parseFloat(tradeQtyInput?.value || '0');
-    const price = parseFloat(tradePriceInput?.value || '0');
-    let fee = parseFloat(tradeFeeInput?.value || '0');
-    if (!qty || qty <= 0) {
-        setTradeStatus('Aantal moet groter dan 0 zijn', 'error');
-        return;
-    }
-    if (!price || price <= 0) {
-        setTradeStatus('Prijs moet groter dan 0 zijn', 'error');
-        return;
-    }
-    if (isNaN(fee) || fee < 0) {
-        fee = 0;
-    }
-    setTradeStatus('Transactie verwerken...', 'info');
-    try {
-        if (tradeContext.mode === 'buy') {
-            await processBuy(qty, price, fee);
-        } else {
-            await processSell(qty, price, fee);
+    function handleTableAction(event) {
+        const aiBtn = event.target.closest('.ai-analyze-stock');
+        if (aiBtn) {
+            event.preventDefault();
+            const ticker = aiBtn.dataset.ticker;
+            if (ticker) analyzeStock(ticker);
+            return;
         }
-        setTradeStatus('Transactie voltooid', 'success');
-        setTimeout(() => {
-            closeTradeModal();
-            fetchPortfolio();
-        }, 600);
-    } catch (err) {
-        console.error('Transactie mislukt', err);
-        setTradeStatus(err.message || 'Transactie mislukt', 'error');
-    }
-}
 
-async function processBuy(qty, price, fee) {
-    if (!lastCashRow) {
-        throw new Error('Cashpositie niet gevonden');
-    }
-    const cashAvailable = Number(lastCashRow.current_price) || 0;
-    const totalCost = qty * price + fee;
-    if (cashAvailable < totalCost) {
-        throw new Error('Niet genoeg cash voor deze transactie.');
-    }
-    const currentQty = Number(tradeContext.quantity) || 0;
-    const currentAvg = Number(tradeContext.avgPrice) || 0;
-    const currentFee = Number(tradeContext.fee) || 0;
-    const newQty = currentQty + qty;
-    const newAvg = newQty > 0 ? (((currentQty * currentAvg) + (qty * price)) / newQty) : price;
-    const newFeeTotal = currentFee + fee;
-
-    const { error: positionError } = await applyPositionFilter(
-        supabaseClient
-            .from('Portefeuille')
-            .update({
-                quantity: newQty,
-                avg_price: newAvg,
-                transactiekost: newFeeTotal
-            })
-            .eq('groep_id', ACTIVE_GROUP_ID)
-    );
-
-    if (positionError) {
-        throw new Error(positionError.message || 'Positie bijwerken mislukt');
+        if (!ACTIVE_GROUP_ID) return;
+        const buyBtn = event.target.closest('.buy-position');
+        if (buyBtn) {
+            event.preventDefault();
+            openTradeModal('buy', buyBtn.dataset);
+            return;
+        }
+        const sellBtn = event.target.closest('.sell-position');
+        if (sellBtn) {
+            event.preventDefault();
+            openTradeModal('sell', sellBtn.dataset);
+        }
     }
 
-    const newCash = cashAvailable - totalCost;
-    const { error: cashError } = await supabaseClient
-        .from('Portefeuille')
-        .update({ quantity: newCash })
-        .eq('groep_id', ACTIVE_GROUP_ID)
-        .eq('ticker', 'CASH');
-
-    if (cashError) {
-        throw new Error(cashError.message || 'Cash bijwerken mislukt');
+    function openTradeModal(mode, dataset) {
+        if (!tradeModal) return;
+        tradeContext = {
+            mode,
+            positionId: dataset.positionId || '',
+            ticker: dataset.ticker || '',
+            quantity: Number(dataset.quantity) || 0,
+            avgPrice: Number(dataset.avgPrice) || 0,
+            price: Number(dataset.price) || 0,
+            fee: Number(dataset.fee) || 0
+        };
+        if (tradeTitle) {
+            tradeTitle.textContent = mode === 'buy' ? `Kopen ${tradeContext.ticker}` : `Verkopen ${tradeContext.ticker}`;
+        }
+        if (tradeTickerEl) {
+            tradeTickerEl.textContent = tradeContext.ticker || '—';
+        }
+        if (tradeInfoEl) {
+            tradeInfoEl.textContent = mode === 'buy'
+                ? `Beschikbare cash: ${eur.format(Number(lastCashRow?.current_price) || 0)}`
+                : `Beschikbare aandelen: ${tradeContext.quantity}`;
+        }
+        if (tradeQtyInput) tradeQtyInput.value = '';
+        if (tradePriceInput) tradePriceInput.value = tradeContext.price || '';
+        if (tradeFeeInput) tradeFeeInput.value = transactionCostInput?.value || '';
+        if (tradeSubmitBtn) {
+            tradeSubmitBtn.textContent = mode === 'buy' ? 'Koop bevestigen' : 'Verkoop bevestigen';
+        }
+        setTradeStatus('Vul de velden in en bevestig.', 'info');
+        tradeModal.classList.remove('hidden');
     }
 
-    tradeContext.quantity = newQty;
-    tradeContext.avgPrice = newAvg;
-    tradeContext.fee = newFeeTotal;
-    if (lastCashRow) {
-        lastCashRow.current_price = newCash;
+    function closeTradeModal() {
+        if (!tradeModal) return;
+        tradeModal.classList.add('hidden');
+        tradeContext = null;
     }
-    await logTrade({ type: 'BUY', ticker: tradeContext.ticker, aantal: qty, koers: price });
-    if (fee && fee > 0) {
-        await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
-    }
-}
 
-async function processSell(qty, price, fee) {
-    const currentQty = Number(tradeContext.quantity) || 0;
-    if (qty > currentQty) {
-        throw new Error('Niet genoeg aandelen om te verkopen.');
+    function setTradeStatus(message, type = 'info') {
+        if (!tradeStatusEl) return;
+        const colors = {
+            info: 'text-slate-400',
+            success: 'text-emerald-600',
+            error: 'text-rose-600'
+        };
+        tradeStatusEl.textContent = message;
+        tradeStatusEl.className = 'text-xs ' + (colors[type] || colors.info);
     }
-    const proceeds = qty * price - fee;
-    if (proceeds < 0) {
-        throw new Error('Transactie resulteert in negatief bedrag.');
-    }
-    const newQty = currentQty - qty;
-    const currentFee = Number(tradeContext.fee) || 0;
-    const newFeeTotal = currentFee + fee;
 
-    if (newQty > 0) {
-        const { error } = await applyPositionFilter(
+    function applyPositionFilter(query) {
+        if (tradeContext?.positionId) {
+            return query.eq('port_id', tradeContext.positionId);
+        }
+        return query.eq('ticker', tradeContext?.ticker || '');
+    }
+
+    async function handleTradeSubmit(event) {
+        event.preventDefault();
+        if (!tradeContext) {
+            setTradeStatus('Geen positie geselecteerd', 'error');
+            return;
+        }
+        if (!tradeContext.positionId && !tradeContext.ticker) {
+            setTradeStatus('Kon positie niet laden', 'error');
+            return;
+        }
+        const qty = parseFloat(tradeQtyInput?.value || '0');
+        const price = parseFloat(tradePriceInput?.value || '0');
+        let fee = parseFloat(tradeFeeInput?.value || '0');
+        if (!qty || qty <= 0) {
+            setTradeStatus('Aantal moet groter dan 0 zijn', 'error');
+            return;
+        }
+        if (!price || price <= 0) {
+            setTradeStatus('Prijs moet groter dan 0 zijn', 'error');
+            return;
+        }
+        if (isNaN(fee) || fee < 0) {
+            fee = 0;
+        }
+        setTradeStatus('Transactie verwerken...', 'info');
+        try {
+            if (tradeContext.mode === 'buy') {
+                await processBuy(qty, price, fee);
+            } else {
+                await processSell(qty, price, fee);
+            }
+            setTradeStatus('Transactie voltooid', 'success');
+            setTimeout(() => {
+                closeTradeModal();
+                fetchPortfolio();
+            }, 600);
+        } catch (err) {
+            console.error('Transactie mislukt', err);
+            setTradeStatus(err.message || 'Transactie mislukt', 'error');
+        }
+    }
+
+    async function processBuy(qty, price, fee) {
+        if (!lastCashRow) {
+            throw new Error('Cashpositie niet gevonden');
+        }
+        const cashAvailable = Number(lastCashRow.current_price) || 0;
+        const totalCost = qty * price + fee;
+        if (cashAvailable < totalCost) {
+            throw new Error('Niet genoeg cash voor deze transactie.');
+        }
+        const currentQty = Number(tradeContext.quantity) || 0;
+        const currentAvg = Number(tradeContext.avgPrice) || 0;
+        const currentFee = Number(tradeContext.fee) || 0;
+        const newQty = currentQty + qty;
+        const newAvg = newQty > 0 ? (((currentQty * currentAvg) + (qty * price)) / newQty) : price;
+        const newFeeTotal = currentFee + fee;
+
+        const { error: positionError } = await applyPositionFilter(
             supabaseClient
                 .from('Portefeuille')
                 .update({
                     quantity: newQty,
+                    avg_price: newAvg,
                     transactiekost: newFeeTotal
                 })
                 .eq('groep_id', ACTIVE_GROUP_ID)
         );
-        if (error) {
-            throw new Error(error.message || 'Positie bijwerken mislukt');
+
+        if (positionError) {
+            throw new Error(positionError.message || 'Positie bijwerken mislukt');
         }
-    } else {
-        const { error } = await applyPositionFilter(
-            supabaseClient
-                .from('Portefeuille')
-                .update({
-                    quantity: 0,
-                    transactiekost: newFeeTotal
-                })
-                .eq('groep_id', ACTIVE_GROUP_ID)
-        );
-        if (error) {
-            throw new Error(error.message || 'Positie bijwerken (naar 0) mislukt');
+
+        const newCash = cashAvailable - totalCost;
+        const { error: cashError } = await supabaseClient
+            .from('Portefeuille')
+            .update({ quantity: newCash })
+            .eq('groep_id', ACTIVE_GROUP_ID)
+            .eq('ticker', 'CASH');
+
+        if (cashError) {
+            throw new Error(cashError.message || 'Cash bijwerken mislukt');
+        }
+
+        tradeContext.quantity = newQty;
+        tradeContext.avgPrice = newAvg;
+        tradeContext.fee = newFeeTotal;
+        if (lastCashRow) {
+            lastCashRow.current_price = newCash;
+        }
+        await logTrade({ type: 'BUY', ticker: tradeContext.ticker, aantal: qty, koers: price });
+        if (fee && fee > 0) {
+            await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
         }
     }
 
-    const cashCurrent = Number(lastCashRow?.current_price) || 0;
-    const newCash = cashCurrent + proceeds;
-    const { error: cashError } = await supabaseClient
-        .from('Portefeuille')
-        .update({ quantity: newCash })
-        .eq('groep_id', ACTIVE_GROUP_ID)
-        .eq('ticker', 'CASH');
-    if (cashError) {
-        throw new Error(cashError.message || 'Cash bijwerken mislukt');
-    }
-
-    tradeContext.quantity = newQty;
-    tradeContext.fee = newFeeTotal;
-    if (lastCashRow) {
-        lastCashRow.current_price = newCash;
-    }
-    await logTrade({ type: 'SELL', ticker: tradeContext.ticker, aantal: qty, koers: price });
-    if (fee && fee > 0) {
-        await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
-    }
-}
-
-async function logTrade(details) {
-    try {
-        let cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
-        if (!cur.match(/^[A-Z]{2,6}$/)) {
-            cur = 'EUR';
+    async function processSell(qty, price, fee) {
+        const currentQty = Number(tradeContext.quantity) || 0;
+        if (qty > currentQty) {
+            throw new Error('Niet genoeg aandelen om te verkopen.');
         }
-        const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
-        const body = {
-            type: details.type,
-            ticker: details.ticker,
-            aantal: details.aantal,
-            koers: details.koers,
-            wisselkoers: wkVal,
-            munt: cur,
-            datum_tr: (transactionDateInput?.value || null),
-            portefeuille_id: tradeContext?.positionId || null
-        };
-        const resp = await fetch('/api/transactions/log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!resp.ok) {
-            try {
-                const msg = await resp.text();
-                console.warn('Transactie log mislukt:', resp.status, msg);
-            } catch (e) {
-                console.warn('Transactie log mislukt:', resp.status);
+        const proceeds = qty * price - fee;
+        if (proceeds < 0) {
+            throw new Error('Transactie resulteert in negatief bedrag.');
+        }
+        const newQty = currentQty - qty;
+        const currentFee = Number(tradeContext.fee) || 0;
+        const newFeeTotal = currentFee + fee;
+
+        if (newQty > 0) {
+            const { error } = await applyPositionFilter(
+                supabaseClient
+                    .from('Portefeuille')
+                    .update({
+                        quantity: newQty,
+                        transactiekost: newFeeTotal
+                    })
+                    .eq('groep_id', ACTIVE_GROUP_ID)
+            );
+            if (error) {
+                throw new Error(error.message || 'Positie bijwerken mislukt');
+            }
+        } else {
+            const { error } = await applyPositionFilter(
+                supabaseClient
+                    .from('Portefeuille')
+                    .update({
+                        quantity: 0,
+                        transactiekost: newFeeTotal
+                    })
+                    .eq('groep_id', ACTIVE_GROUP_ID)
+            );
+            if (error) {
+                throw new Error(error.message || 'Positie bijwerken (naar 0) mislukt');
             }
         }
-    } catch (e) {
-        console.debug('Transactie log mislukt', e);
-    }
-}
 
-function updateCashCard(amount) {
-    const cashEl = document.getElementById('cash-balance');
-    if (cashEl) cashEl.textContent = eur.format(amount);
-    setCashStatus('', 'info');
-    updateTransferStatus();
-}
-
-async function ensureCashRow() {
-    if (!ACTIVE_GROUP_ID) return false;
-    try {
-        const lastRow = await fetchLatestCashRow();
-        if (lastRow) {
-            lastCashRow = lastRow;
-            return true;
+        const cashCurrent = Number(lastCashRow?.current_price) || 0;
+        const newCash = cashCurrent + proceeds;
+        const { error: cashError } = await supabaseClient
+            .from('Portefeuille')
+            .update({ quantity: newCash })
+            .eq('groep_id', ACTIVE_GROUP_ID)
+            .eq('ticker', 'CASH');
+        if (cashError) {
+            throw new Error(cashError.message || 'Cash bijwerken mislukt');
         }
-        const payload = {
-            ticker: "CASH",
-            quantity: 0,
-            avg_price: 0,
-            transactiekost: 0,
-            groep_id: ACTIVE_GROUP_ID
-        };
 
-        const { data, error } = await supabaseClient.from('Portefeuille').insert([payload]).select();
+        tradeContext.quantity = newQty;
+        tradeContext.fee = newFeeTotal;
+        if (lastCashRow) {
+            lastCashRow.current_price = newCash;
+        }
+        await logTrade({ type: 'SELL', ticker: tradeContext.ticker, aantal: qty, koers: price });
+        if (fee && fee > 0) {
+            await logTrade({ type: 'FEE', ticker: tradeContext.ticker, aantal: 1, koers: fee });
+        }
+    }
 
-        if (error) {
-            console.warn("Kon geen cash row aanmaken (mogelijk geen rechten):", error);
+    async function logTrade(details) {
+        try {
+            let cur = (currencyInput?.value || lastQuote?.currency || 'EUR').trim().toUpperCase();
+            if (!cur.match(/^[A-Z]{2,6}$/)) {
+                cur = 'EUR';
+            }
+            const wkVal = (parseFloat(document.getElementById('wk-output')?.value || '0') || 1);
+            const body = {
+                type: details.type,
+                ticker: details.ticker,
+                aantal: details.aantal,
+                koers: details.koers,
+                wisselkoers: wkVal,
+                munt: cur,
+                datum_tr: (transactionDateInput?.value || null),
+                portefeuille_id: tradeContext?.positionId || null
+            };
+            const resp = await fetch('/api/transactions/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!resp.ok) {
+                try {
+                    const msg = await resp.text();
+                    console.warn('Transactie log mislukt:', resp.status, msg);
+                } catch (e) {
+                    console.warn('Transactie log mislukt:', resp.status);
+                }
+            }
+        } catch (e) {
+            console.debug('Transactie log mislukt', e);
+        }
+    }
+
+    function updateCashCard(amount) {
+        const cashEl = document.getElementById('cash-balance');
+        if (cashEl) cashEl.textContent = eur.format(amount);
+        setCashStatus('', 'info');
+        updateTransferStatus();
+    }
+
+    async function ensureCashRow() {
+        if (!ACTIVE_GROUP_ID) return false;
+        try {
+            const lastRow = await fetchLatestCashRow();
+            if (lastRow) {
+                lastCashRow = lastRow;
+                return true;
+            }
+            const payload = {
+                ticker: "CASH",
+                quantity: 0,
+                avg_price: 0,
+                transactiekost: 0,
+                groep_id: ACTIVE_GROUP_ID
+            };
+
+            const { data, error } = await supabaseClient.from('Portefeuille').insert([payload]).select();
+
+            if (error) {
+                console.warn("Kon geen cash row aanmaken (mogelijk geen rechten):", error);
+                return false;
+            }
+
+            if (data && data[0]) {
+                lastCashRow = { ...data[0], current_price: data[0].quantity };
+                return true;
+            }
+            return false;
+
+        } catch (err) {
+            console.error('Cashpositie check mislukt:', err);
             return false;
         }
-
-        if (data && data[0]) {
-            lastCashRow = { ...data[0], current_price: data[0].quantity };
-            return true;
-        }
-        return false;
-
-    } catch (err) {
-        console.error('Cashpositie check mislukt:', err);
-        return false;
-    }
-}
-
-function setCashControlsState(enabled) {
-    const flag = Boolean(enabled && ACTIVE_GROUP_ID && IS_HOST);
-    if (cashTransferTarget) cashTransferTarget.disabled = !flag;
-    if (cashTransferDirection) cashTransferDirection.disabled = !flag;
-    if (cashTransferAmount) cashTransferAmount.disabled = !flag;
-    if (cashTransferDescription) cashTransferDescription.disabled = !flag;
-}
-
-function setCashStatus(message, type = 'info') {
-    const statusEl = document.getElementById('cash-status');
-    if (!statusEl) return;
-    const colors = {
-        info: 'text-slate-400',
-        success: 'text-emerald-600',
-        error: 'text-rose-600'
-    };
-    statusEl.textContent = message;
-    statusEl.className = 'text-xs ' + (colors[type] || colors.info);
-}
-
-let transferStatusMode = 'idle';
-let transferStatusTimer = null;
-
-function applyTransferStatus(text, tone = 'info') {
-    if (!cashTransferStatus) return;
-    const colors = {
-        info: 'text-slate-600',
-        success: 'text-emerald-600',
-        error: 'text-rose-600'
-    };
-    cashTransferStatus.textContent = text;
-    cashTransferStatus.className = 'text-sm mt-1 ' + (colors[tone] || colors.info);
-}
-
-function updateTransferStatus(options = {}) {
-    if (!cashTransferStatus) return;
-    const { mode, message } = options;
-
-    if (!mode && transferStatusMode !== 'idle') {
-        return;
     }
 
-    if (mode === 'saving') {
-        if (transferStatusTimer) {
-            clearTimeout(transferStatusTimer);
-            transferStatusTimer = null;
-        }
-        transferStatusMode = 'saving';
-        applyTransferStatus(message || 'Opslaan...', 'info');
-        return;
+    function setCashControlsState(enabled) {
+        const flag = Boolean(enabled && ACTIVE_GROUP_ID && IS_HOST);
+        if (cashTransferTarget) cashTransferTarget.disabled = !flag;
+        if (cashTransferDirection) cashTransferDirection.disabled = !flag;
+        if (cashTransferAmount) cashTransferAmount.disabled = !flag;
+        if (cashTransferDescription) cashTransferDescription.disabled = !flag;
     }
 
-    if (mode === 'success') {
-        if (transferStatusTimer) {
-            clearTimeout(transferStatusTimer);
-            transferStatusTimer = null;
-        }
-        transferStatusMode = 'success';
-        applyTransferStatus(message || 'Overschrijving opgeslagen', 'success');
-        transferStatusTimer = setTimeout(() => {
-            transferStatusMode = 'idle';
-            updateTransferStatus({ mode: 'idle' });
-        }, 2000);
-        return;
+    function setCashStatus(message, type = 'info') {
+        const statusEl = document.getElementById('cash-status');
+        if (!statusEl) return;
+        const colors = {
+            info: 'text-slate-400',
+            success: 'text-emerald-600',
+            error: 'text-rose-600'
+        };
+        statusEl.textContent = message;
+        statusEl.className = 'text-xs ' + (colors[type] || colors.info);
     }
 
-    if (mode === 'error') {
-        if (transferStatusTimer) {
-            clearTimeout(transferStatusTimer);
-            transferStatusTimer = null;
-        }
-        transferStatusMode = 'error';
-        applyTransferStatus(message || 'Opslaan mislukt', 'error');
-        return;
+    let transferStatusMode = 'idle';
+    let transferStatusTimer = null;
+
+    function applyTransferStatus(text, tone = 'info') {
+        if (!cashTransferStatus) return;
+        const colors = {
+            info: 'text-slate-600',
+            success: 'text-emerald-600',
+            error: 'text-rose-600'
+        };
+        cashTransferStatus.textContent = text;
+        cashTransferStatus.className = 'text-sm mt-1 ' + (colors[tone] || colors.info);
     }
 
-    if (mode === 'idle' || !mode) {
-        if (transferStatusTimer) {
-            clearTimeout(transferStatusTimer);
-            transferStatusTimer = null;
-        }
-        transferStatusMode = 'idle';
-        const cashValue = Number(lastCashRow?.current_price) || 0;
-        const kasValue = Number.isFinite(latestKasBalance) ? latestKasBalance : null;
-        const text = kasValue !== null
-            ? `Portefeuille cash: ${eur.format(cashValue)} · Kas: ${eur.format(kasValue)}`
-            : `Portefeuille cash: ${eur.format(cashValue)}`;
-        applyTransferStatus(text, 'info');
-    }
-}
+    function updateTransferStatus(options = {}) {
+        if (!cashTransferStatus) return;
+        const { mode, message } = options;
 
-async function fetchLatestCashRow() {
-    if (!ACTIVE_GROUP_ID) return null;
-    const { data, error } = await supabaseClient
-        .from('Portefeuille')
-        .select('*')
-        .eq('groep_id', ACTIVE_GROUP_ID)
-        .eq('ticker', 'CASH')
-        .limit(1);
-    if (error) {
-        console.error('Cash ophalen mislukt', error);
-        return null;
-    }
-    const row = data?.[0] || null;
-    if (row) {
-        return { ...row, current_price: row.quantity };
-    }
-    return null;
-}
-
-fetchPortfolio();
-
-class TickerAutocomplete {
-    constructor(inputElement, dropdownElement) {
-        this.input = inputElement;
-        this.dropdown = dropdownElement;
-        this.debounceTimer = null;
-        this.selectedIndex = -1;
-        this.results = [];
-
-        this.init();
-    }
-
-    init() {
-        this.input.addEventListener('input', (e) => {
-            clearTimeout(this.debounceTimer);
-            this.debounceTimer = setTimeout(() => {
-                this.handleInput(e.target.value);
-            }, 300);
-        });
-
-        this.input.addEventListener('keydown', (e) => {
-            if (!this.dropdown.classList.contains('active')) return;
-
-            switch (e.key) {
-                case 'ArrowDown':
-                    e.preventDefault();
-                    this.selectNext();
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    this.selectPrevious();
-                    break;
-                case 'Enter':
-                    e.preventDefault();
-                    if (this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
-                        this.selectTicker(this.results[this.selectedIndex]);
-                    }
-                    break;
-                case 'Escape':
-                    this.hideDropdown();
-                    break;
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!this.input.contains(e.target) && !this.dropdown.contains(e.target)) {
-                this.hideDropdown();
-            }
-        });
-
-        this.input.addEventListener('focus', () => {
-            if (this.results.length > 0) {
-                this.showDropdown();
-            }
-        });
-    }
-
-    async handleInput(query) {
-        const trimmed = query.trim().toUpperCase();
-
-        if (trimmed.length < 1) {
-            this.hideDropdown();
+        if (!mode && transferStatusMode !== 'idle') {
             return;
         }
 
-        this.showLoading();
-
-        try {
-            const response = await fetch(`/api/search-tickers?q=${encodeURIComponent(trimmed)}`);
-
-            if (!response.ok) {
-                throw new Error('Search failed');
+        if (mode === 'saving') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
             }
+            transferStatusMode = 'saving';
+            applyTransferStatus(message || 'Opslaan...', 'info');
+            return;
+        }
 
-            const results = await response.json();
-            this.results = results;
-
-            if (results.length > 0) {
-                this.displayResults(results);
-            } else {
-                this.showNoResults();
+        if (mode === 'success') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
             }
-        } catch (error) {
-            console.error('Autocomplete error:', error);
-            this.hideDropdown();
+            transferStatusMode = 'success';
+            applyTransferStatus(message || 'Overschrijving opgeslagen', 'success');
+            transferStatusTimer = setTimeout(() => {
+                transferStatusMode = 'idle';
+                updateTransferStatus({ mode: 'idle' });
+            }, 2000);
+            return;
+        }
+
+        if (mode === 'error') {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'error';
+            applyTransferStatus(message || 'Opslaan mislukt', 'error');
+            return;
+        }
+
+        if (mode === 'idle' || !mode) {
+            if (transferStatusTimer) {
+                clearTimeout(transferStatusTimer);
+                transferStatusTimer = null;
+            }
+            transferStatusMode = 'idle';
+            const cashValue = Number(lastCashRow?.current_price) || 0;
+            const kasValue = Number.isFinite(latestKasBalance) ? latestKasBalance : null;
+            const text = kasValue !== null
+                ? `Portefeuille cash: ${eur.format(cashValue)} · Kas: ${eur.format(kasValue)}`
+                : `Portefeuille cash: ${eur.format(cashValue)}`;
+            applyTransferStatus(text, 'info');
         }
     }
 
-    showLoading() {
-        this.dropdown.innerHTML = '<div class="autocomplete-loading">Zoeken...</div>';
-        this.dropdown.classList.add('active');
+    async function fetchLatestCashRow() {
+        if (!ACTIVE_GROUP_ID) return null;
+        const { data, error } = await supabaseClient
+            .from('Portefeuille')
+            .select('*')
+            .eq('groep_id', ACTIVE_GROUP_ID)
+            .eq('ticker', 'CASH')
+            .limit(1);
+        if (error) {
+            console.error('Cash ophalen mislukt', error);
+            return null;
+        }
+        const row = data?.[0] || null;
+        if (row) {
+            return { ...row, current_price: row.quantity };
+        }
+        return null;
     }
 
-    showNoResults() {
-        this.dropdown.innerHTML = '<div class="autocomplete-no-results">Geen resultaten</div>';
-        this.dropdown.classList.add('active');
-    }
+    fetchPortfolio();
 
-    displayResults(results) {
-        this.selectedIndex = -1;
+    class TickerAutocomplete {
+        constructor(inputElement, dropdownElement) {
+            this.input = inputElement;
+            this.dropdown = dropdownElement;
+            this.debounceTimer = null;
+            this.selectedIndex = -1;
+            this.results = [];
 
-        const html = results.map((result, index) => `
+            this.init();
+        }
+
+        init() {
+            this.input.addEventListener('input', (e) => {
+                clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(() => {
+                    this.handleInput(e.target.value);
+                }, 300);
+            });
+
+            this.input.addEventListener('keydown', (e) => {
+                if (!this.dropdown.classList.contains('active')) return;
+
+                switch (e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        this.selectNext();
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        this.selectPrevious();
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        if (this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
+                            this.selectTicker(this.results[this.selectedIndex]);
+                        }
+                        break;
+                    case 'Escape':
+                        this.hideDropdown();
+                        break;
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!this.input.contains(e.target) && !this.dropdown.contains(e.target)) {
+                    this.hideDropdown();
+                }
+            });
+
+            this.input.addEventListener('focus', () => {
+                if (this.results.length > 0) {
+                    this.showDropdown();
+                }
+            });
+        }
+
+        async handleInput(query) {
+            const trimmed = query.trim().toUpperCase();
+
+            if (trimmed.length < 1) {
+                this.hideDropdown();
+                return;
+            }
+
+            this.showLoading();
+
+            try {
+                const response = await fetch(`/api/search-tickers?q=${encodeURIComponent(trimmed)}`);
+
+                if (!response.ok) {
+                    throw new Error('Search failed');
+                }
+
+                const results = await response.json();
+                this.results = results;
+
+                if (results.length > 0) {
+                    this.displayResults(results);
+                } else {
+                    this.showNoResults();
+                }
+            } catch (error) {
+                console.error('Autocomplete error:', error);
+                this.hideDropdown();
+            }
+        }
+
+        showLoading() {
+            this.dropdown.innerHTML = '<div class="autocomplete-loading">Zoeken...</div>';
+            this.dropdown.classList.add('active');
+        }
+
+        showNoResults() {
+            this.dropdown.innerHTML = '<div class="autocomplete-no-results">Geen resultaten</div>';
+            this.dropdown.classList.add('active');
+        }
+
+        displayResults(results) {
+            this.selectedIndex = -1;
+
+            const html = results.map((result, index) => `
                 <div class="autocomplete-item" data-index="${index}">
                     <div class="autocomplete-ticker">${this.escapeHtml(result.ticker)}</div>
                     <div class="autocomplete-name">${this.escapeHtml(result.name)}</div>
@@ -2671,173 +2710,173 @@ class TickerAutocomplete {
                 </div>
             `).join('');
 
-        this.dropdown.innerHTML = html;
-        this.dropdown.classList.add('active');
+            this.dropdown.innerHTML = html;
+            this.dropdown.classList.add('active');
 
-        this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
-            item.addEventListener('click', () => {
-                this.selectTicker(results[index]);
+            this.dropdown.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+                item.addEventListener('click', () => {
+                    this.selectTicker(results[index]);
+                });
+
+                item.addEventListener('mouseenter', () => {
+                    this.setSelectedIndex(index);
+                });
             });
+        }
 
-            item.addEventListener('mouseenter', () => {
-                this.setSelectedIndex(index);
-            });
-        });
-    }
+        selectNext() {
+            if (this.selectedIndex < this.results.length - 1) {
+                this.setSelectedIndex(this.selectedIndex + 1);
+            }
+        }
 
-    selectNext() {
-        if (this.selectedIndex < this.results.length - 1) {
-            this.setSelectedIndex(this.selectedIndex + 1);
+        selectPrevious() {
+            if (this.selectedIndex > 0) {
+                this.setSelectedIndex(this.selectedIndex - 1);
+            }
+        }
+
+        setSelectedIndex(index) {
+            const items = this.dropdown.querySelectorAll('.autocomplete-item');
+            items.forEach(item => item.classList.remove('selected'));
+
+            this.selectedIndex = index;
+            if (items[index]) {
+                items[index].classList.add('selected');
+                items[index].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        selectTicker(result) {
+            this.input.value = result.ticker;
+            this.hideDropdown();
+
+            if (lookupBtn) {
+                lookupBtn.click();
+            }
+        }
+
+        showDropdown() {
+            this.dropdown.classList.add('active');
+        }
+
+        hideDropdown() {
+            this.dropdown.classList.remove('active');
+            this.selectedIndex = -1;
+        }
+
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
     }
 
-    selectPrevious() {
-        if (this.selectedIndex > 0) {
-            this.setSelectedIndex(this.selectedIndex - 1);
+    let tickerAutocomplete = null;
+
+    if (tickerInput) {
+        let autocompleteDropdown = document.getElementById('ticker-autocomplete-dropdown');
+        if (!autocompleteDropdown) {
+            autocompleteDropdown = document.createElement('div');
+            autocompleteDropdown.id = 'ticker-autocomplete-dropdown';
+            autocompleteDropdown.className = 'autocomplete-dropdown';
+
+            const tickerContainer = tickerInput.parentElement;
+            tickerContainer.style.position = 'relative';
+            tickerContainer.appendChild(autocompleteDropdown);
+        }
+
+        tickerAutocomplete = new TickerAutocomplete(tickerInput, autocompleteDropdown);
+        console.log('✅ Autocomplete initialized');
+    }
+
+    // =============================================================================
+    // VIEW MODE TOGGLE (TOTAAL vs PER LID)
+    // =============================================================================
+
+    let viewMode = 'total';
+    let memberCount = 1;
+    let rawTotals = {
+        totalValue: 0,
+        totalReturn: 0,
+        returnPct: 0,
+        realizedProfit: 0
+    };
+
+    async function fetchMemberCount() {
+        if (!ACTIVE_GROUP_ID) return 1;
+
+        try {
+            const response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/member_count`);
+            const data = await response.json();
+
+            if (response.ok && data.member_count) {
+                memberCount = data.member_count;
+                return memberCount;
+            }
+        } catch (error) {
+            console.error('Error fetching member count:', error);
+        }
+
+        return 1;
+    }
+
+    function updateDisplayedValues() {
+        const divisor = viewMode === 'per_member' ? memberCount : 1;
+        const subtitle = viewMode === 'per_member' ? `(${memberCount} leden)` : '';
+
+        const totalValueEl = document.getElementById('total-value');
+        const totalValueSubtitle = document.getElementById('total-value-subtitle');
+        if (totalValueEl) {
+            totalValueEl.textContent = eur.format(rawTotals.totalValue / divisor);
+        }
+        if (totalValueSubtitle) {
+            totalValueSubtitle.textContent = subtitle;
+        }
+
+        const totalGainEl = document.getElementById('total-gain');
+        const totalGainSubtitle = document.getElementById('total-gain-subtitle');
+        if (totalGainEl) {
+            const displayValue = rawTotals.totalReturn / divisor;
+            totalGainEl.textContent = eur.format(displayValue);
+            totalGainEl.className = 'text-3xl font-bold ' + (displayValue >= 0 ? 'text-emerald-600' : 'text-rose-600');
+        }
+        if (totalGainSubtitle) {
+            totalGainSubtitle.textContent = subtitle;
+        }
+
+        const realizedProfitEl = document.getElementById('realized-profit');
+        const realizedProfitSubtitle = document.getElementById('realized-profit-subtitle');
+        if (realizedProfitEl) {
+            const displayValue = rawTotals.realizedProfit / divisor;
+            realizedProfitEl.textContent = eur.format(displayValue);
+            realizedProfitEl.className = 'text-3xl font-bold ' + (displayValue >= 0 ? 'text-emerald-600' : 'text-rose-600');
+        }
+        if (realizedProfitSubtitle) {
+            realizedProfitSubtitle.textContent = subtitle;
+        }
+
+        const percentEl = document.getElementById('gain-percent');
+        if (percentEl) {
+            percentEl.textContent = (rawTotals.totalReturn >= 0 ? '+' : '') + rawTotals.returnPct.toFixed(2) + '%';
         }
     }
 
-    setSelectedIndex(index) {
-        const items = this.dropdown.querySelectorAll('.autocomplete-item');
-        items.forEach(item => item.classList.remove('selected'));
+    document.getElementById('view-total-btn')?.addEventListener('click', function () {
+        viewMode = 'total';
+        this.classList.add('active');
+        document.getElementById('view-per-member-btn')?.classList.remove('active');
+        updateDisplayedValues();
+    });
 
-        this.selectedIndex = index;
-        if (items[index]) {
-            items[index].classList.add('selected');
-            items[index].scrollIntoView({ block: 'nearest' });
-        }
-    }
+    document.getElementById('view-per-member-btn')?.addEventListener('click', function () {
+        viewMode = 'per_member';
+        this.classList.add('active');
+        document.getElementById('view-total-btn')?.classList.remove('active');
+        updateDisplayedValues();
+    });
 
-    selectTicker(result) {
-        this.input.value = result.ticker;
-        this.hideDropdown();
-
-        if (lookupBtn) {
-            lookupBtn.click();
-        }
-    }
-
-    showDropdown() {
-        this.dropdown.classList.add('active');
-    }
-
-    hideDropdown() {
-        this.dropdown.classList.remove('active');
-        this.selectedIndex = -1;
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-}
-
-let tickerAutocomplete = null;
-
-if (tickerInput) {
-    let autocompleteDropdown = document.getElementById('ticker-autocomplete-dropdown');
-    if (!autocompleteDropdown) {
-        autocompleteDropdown = document.createElement('div');
-        autocompleteDropdown.id = 'ticker-autocomplete-dropdown';
-        autocompleteDropdown.className = 'autocomplete-dropdown';
-
-        const tickerContainer = tickerInput.parentElement;
-        tickerContainer.style.position = 'relative';
-        tickerContainer.appendChild(autocompleteDropdown);
-    }
-
-    tickerAutocomplete = new TickerAutocomplete(tickerInput, autocompleteDropdown);
-    console.log('✅ Autocomplete initialized');
-}
-
-// =============================================================================
-// VIEW MODE TOGGLE (TOTAAL vs PER LID)
-// =============================================================================
-
-let viewMode = 'total';
-let memberCount = 1;
-let rawTotals = {
-    totalValue: 0,
-    totalReturn: 0,
-    returnPct: 0,
-    realizedProfit: 0
-};
-
-async function fetchMemberCount() {
-    if (!ACTIVE_GROUP_ID) return 1;
-    
-    try {
-        const response = await fetch(`/api/groups/${ACTIVE_GROUP_ID}/member_count`);
-        const data = await response.json();
-        
-        if (response.ok && data.member_count) {
-            memberCount = data.member_count;
-            return memberCount;
-        }
-    } catch (error) {
-        console.error('Error fetching member count:', error);
-    }
-    
-    return 1;
-}
-
-function updateDisplayedValues() {
-    const divisor = viewMode === 'per_member' ? memberCount : 1;
-    const subtitle = viewMode === 'per_member' ? `(${memberCount} leden)` : '';
-    
-    const totalValueEl = document.getElementById('total-value');
-    const totalValueSubtitle = document.getElementById('total-value-subtitle');
-    if (totalValueEl) {
-        totalValueEl.textContent = eur.format(rawTotals.totalValue / divisor);
-    }
-    if (totalValueSubtitle) {
-        totalValueSubtitle.textContent = subtitle;
-    }
-    
-    const totalGainEl = document.getElementById('total-gain');
-    const totalGainSubtitle = document.getElementById('total-gain-subtitle');
-    if (totalGainEl) {
-        const displayValue = rawTotals.totalReturn / divisor;
-        totalGainEl.textContent = eur.format(displayValue);
-        totalGainEl.className = 'text-3xl font-bold ' + (displayValue >= 0 ? 'text-emerald-600' : 'text-rose-600');
-    }
-    if (totalGainSubtitle) {
-        totalGainSubtitle.textContent = subtitle;
-    }
-    
-    const realizedProfitEl = document.getElementById('realized-profit');
-    const realizedProfitSubtitle = document.getElementById('realized-profit-subtitle');
-    if (realizedProfitEl) {
-        const displayValue = rawTotals.realizedProfit / divisor;
-        realizedProfitEl.textContent = eur.format(displayValue);
-        realizedProfitEl.className = 'text-3xl font-bold ' + (displayValue >= 0 ? 'text-emerald-600' : 'text-rose-600');
-    }
-    if (realizedProfitSubtitle) {
-        realizedProfitSubtitle.textContent = subtitle;
-    }
-    
-    const percentEl = document.getElementById('gain-percent');
-    if (percentEl) {
-        percentEl.textContent = (rawTotals.totalReturn >= 0 ? '+' : '') + rawTotals.returnPct.toFixed(2) + '%';
-    }
-}
-
-document.getElementById('view-total-btn')?.addEventListener('click', function() {
-    viewMode = 'total';
-    this.classList.add('active');
-    document.getElementById('view-per-member-btn')?.classList.remove('active');
-    updateDisplayedValues();
-});
-
-document.getElementById('view-per-member-btn')?.addEventListener('click', function() {
-    viewMode = 'per_member';
-    this.classList.add('active');
-    document.getElementById('view-total-btn')?.classList.remove('active');
-    updateDisplayedValues();
-});
-
-fetchMemberCount();
+    fetchMemberCount();
 </script>
 {% endblock %}
 ```

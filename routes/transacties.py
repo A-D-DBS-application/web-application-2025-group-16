@@ -311,6 +311,7 @@ def api_realized_profit(group_id: int):
 def api_portfolio_summary(group_id: int):
     """
     Volledige portefeuille samenvatting voor dashboard.
+    Correcte rendement berekening: Total Value - Cash Transfers = Return
     """
     if "user_id" not in session:
         return jsonify({"error": "Niet ingelogd"}), 401
@@ -329,9 +330,38 @@ def api_portfolio_summary(group_id: int):
         currency_map = _get_position_currency_from_buy(db, port_ids)
         realized_data = _calculate_realized_profit_fifo(db, port_ids)
 
+        # === CASH TRANSFERS OPHALEN ===
+        net_cash_invested = 0.0
+        
+        if port_ids:
+            try:
+                # Haal alle TRANSFER transacties op voor deze groep
+                transfer_txs = (
+                    db.query(Transacties)
+                    .filter(Transacties.portefeuille_id.in_(port_ids))
+                    .filter(Transacties.type == 'TRANSFER')
+                    .filter(Transacties.ticker == 'CASH')
+                    .all()
+                )
+                
+                for tx in transfer_txs:
+                    # Bedrag berekenen
+                    amount = _safe_float(tx.aantal) * _safe_float(tx.koers)
+                    wk = _safe_wk(tx.wisselkoers) if tx.wisselkoers else 1.0
+                    amount_eur = amount / wk if wk > 0 else amount
+                    
+                    # Positieve bedragen = stortingen (verhogen inleg)
+                    # Negatieve bedragen = opnames (verlagen inleg)
+                    net_cash_invested += amount_eur
+                        
+            except Exception as e:
+                print(f"Warning: Could not fetch cash transfers: {e}")
+                db.rollback()
+
+        # === PORTFOLIO POSITIES VERWERKEN ===
         cash_amount = 0.0
-        total_value = 0.0
-        total_cost = 0.0
+        total_portfolio_value = 0.0
+        total_cost_basis = 0.0
         total_unrealized = 0.0
         sectors = {}
         position_list = []
@@ -350,24 +380,30 @@ def api_portfolio_summary(group_id: int):
             munt = currency_map.get(pos.port_id, 'EUR')
             wk = 1.0 if munt == 'EUR' else current_wk_map.get(munt, 1.0)
 
+            # Huidige prijs ophalen
             if ticker not in price_cache:
                 fetched_price = get_latest_price(ticker)
                 price_cache[ticker] = _safe_float(fetched_price)
             current_price_local = price_cache[ticker]
 
+            # Conversie naar EUR
             current_price_eur = current_price_local / wk if wk > 0 else current_price_local
             current_value_eur = qty * current_price_eur
 
+            # Cost basis (voor unrealized berekening)
             avg_price_eur = _safe_float(pos.avg_price)
             fees_eur = _safe_float(pos.transactiekost)
             cost_basis_eur = (qty * avg_price_eur) + fees_eur
+            
+            # Unrealized gain/loss (portfolio winst op huidige posities)
             unrealized = current_value_eur - cost_basis_eur
             unrealized_pct = (unrealized / cost_basis_eur * 100) if cost_basis_eur > 0 else 0
 
-            total_value += current_value_eur
-            total_cost += cost_basis_eur
+            total_portfolio_value += current_value_eur
+            total_cost_basis += cost_basis_eur
             total_unrealized += unrealized
 
+            # Sector toewijzing
             asset = getattr(pos, "asset", None)
             sector = (asset.sector if asset and asset.sector else "Overig")
             sectors[sector] = sectors.get(sector, 0) + current_value_eur
@@ -388,20 +424,31 @@ def api_portfolio_summary(group_id: int):
                 "unrealized_pct": round(unrealized_pct, 2)
             })
 
-        total_return = realized_data["total"] + total_unrealized
-        return_pct = (total_return / total_cost * 100) if total_cost > 0 else 0
+        # === RENDEMENT BEREKENING (CORRECT) ===
+        # Totale waarde = portfolio + cash
+        total_value_with_cash = total_portfolio_value + cash_amount
+        
+        # Totale inleg = netto cash transfers (stortingen - opnames)
+        total_invested = net_cash_invested
+        
+        # Totaal rendement = huidige waarde - inleg
+        total_return = total_value_with_cash - total_invested
+        
+        # Rendement percentage
+        return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
 
         return jsonify({
             "positions": position_list,
             "cash": round(cash_amount, 2),
             "totals": {
-                "portfolio_value": round(total_value, 2),
-                "total_value_with_cash": round(total_value + cash_amount, 2),
-                "cost_basis": round(total_cost, 2),
-                "total_return": round(total_return, 2),
+                "portfolio_value": round(total_portfolio_value, 2),
+                "total_value_with_cash": round(total_value_with_cash, 2),
+                "cost_basis": round(total_cost_basis, 2),  # Voor referentie (aandelen cost)
+                "total_invested": round(total_invested, 2),  # Netto cash transfers
+                "total_return": round(total_return, 2),  # Totaal rendement
                 "return_percentage": round(return_pct, 2),
-                "unrealized": round(total_unrealized, 2),
-                "realized": realized_data["total"],
+                "unrealized": round(total_unrealized, 2),  # Unrealized op posities
+                "realized": realized_data["total"],  # Gerealiseerde winst
                 "dividends": realized_data["dividends"],
                 "fees": realized_data["fees"],
                 "sell_count": realized_data["sell_count"],
@@ -418,8 +465,7 @@ def api_portfolio_summary(group_id: int):
         }), 500
     finally:
         db.close()
-
-
+        
 @transacties_bp.route("/api/groups/<int:group_id>/debug_portfolio")
 def api_debug_portfolio(group_id: int):
     """Debug endpoint om te zien wat er in de database staat."""
