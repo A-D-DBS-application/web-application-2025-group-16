@@ -118,7 +118,7 @@
                         <p class="text-sm text-slate-400 uppercase tracking-wide">Jouw groepen</p>
                         <h2 class="text-xl font-semibold text-slate-900">Lopende aanvragen</h2>
                     </div>
-                    <span class="text-sm text-slate-500">{{ pending_leave_groups|length }} aanvraag{% if (pending_leave_groups|length) != 1 %}en{% endif %}</span>
+                    <span class="text-sm text-slate-500">{{ pending_leave_groups|length }} {{ 'aanvraag' if (pending_leave_groups|length) == 1 else 'aanvragen' }}</span>
                 </div>
 
                 <div class="group-list">
