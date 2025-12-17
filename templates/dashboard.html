@@ -476,11 +476,12 @@
 
     const SUPABASE_URL = "{{ supabase_url }}";
     const SUPABASE_KEY = "{{ supabase_key }}";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // FIX: Renamed variable to avoid conflict with the library loaded in head
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const ACTIVE_GROUP_ID = Number('{{ active_group.id if active_group else "" }}') || null;
 
-    // HOST CONSTANTE: Dit bepaalt of JS knoppen toont
-    const IS_HOST = {{ 'true' if is_host else 'false' }};
+    // FIX: Added quotes and string comparison to fix syntax highlighting in VS Code
+    const IS_HOST = "{{ 'true' if is_host else 'false' }}" === "true";
 
     const tickerInput = document.getElementById('ticker-input');
     const quantityInput = document.getElementById('quantity-input');
@@ -566,7 +567,7 @@
                 // 2) Wisselkoersen: bepaal lijst munten
                 let currencies = [];
                 try {
-                    const { data: currenciesRows, error: curErr2 } = await supabase
+                    const { data: currenciesRows, error: curErr2 } = await supabaseClient
                         .from('Wisselkoersen')
                         .select('munt');
                     if (!curErr2 && currenciesRows) {
@@ -972,7 +973,7 @@
         const sym = (tickerInput?.value || '').trim().toUpperCase();
         if (!sym) return;
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('Transacties')
                 .select('munt,wisselkoers')
                 .eq('ticker', sym)
@@ -1022,7 +1023,7 @@
             const t = String(row.ticker || '').toUpperCase();
             if (t === 'CASH') { result.push(row); continue; }
             try {
-                const { data: txs, error } = await supabase
+                const { data: txs, error } = await supabaseClient
                     .from('Transacties')
                     .select('munt,wisselkoers,ticker')
                     .eq('ticker', String(row.ticker || '').toUpperCase())
@@ -1719,7 +1720,7 @@
         let fallbackError = null;
         let holding = findCurrentHolding(symbol);
         if (!holding) {
-            const { data: rows, error: existErr } = await supabase
+            const { data: rows, error: existErr } = await supabaseClient
                 .from('Portefeuille')
                 .select('port_id, quantity, avg_price, transactiekost')
                 .eq('groep_id', ACTIVE_GROUP_ID)
@@ -1762,7 +1763,7 @@
             const newAvg = ((prevQty * prevAvg) + (qty * priceEur)) / newQty;
             const newFee = prevFee + feeAmountEur;
 
-            const { error: updError } = await supabase
+            const { error: updError } = await supabaseClient
                 .from('Portefeuille')
                 .update({
                     quantity: newQty,
@@ -1831,7 +1832,7 @@
             const newQty = prevQty - qty;
             const prevFee = Number(holding.transactiekost) || 0;
             const newFee = prevFee + feeAmount;
-            const { error: updSellErr } = await supabase
+            const { error: updSellErr } = await supabaseClient
                 .from('Portefeuille')
                 .update({
                     quantity: newQty,
@@ -1850,7 +1851,7 @@
         const cashUpdateOk = await updateCashBalance(nextCash);
         if (!cashUpdateOk) {
             if (holding) {
-                await supabase
+                await supabaseClient
                     .from('Portefeuille')
                     .update({
                         quantity: holding.quantity,
@@ -1860,7 +1861,7 @@
                     .eq('groep_id', ACTIVE_GROUP_ID)
                     .eq('port_id', holding.port_id);
             } else if (insertedPortId) {
-                await supabase
+                await supabaseClient
                     .from('Portefeuille')
                     .delete()
                     .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2233,7 +2234,7 @@
         const newFeeTotal = currentFee + fee;
 
         const { error: positionError } = await applyPositionFilter(
-            supabase
+            supabaseClient
                 .from('Portefeuille')
                 .update({
                     quantity: newQty,
@@ -2248,7 +2249,7 @@
         }
 
         const newCash = cashAvailable - totalCost;
-        const { error: cashError } = await supabase
+        const { error: cashError } = await supabaseClient
             .from('Portefeuille')
             .update({ quantity: newCash })
             .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2285,7 +2286,7 @@
 
         if (newQty > 0) {
             const { error } = await applyPositionFilter(
-                supabase
+                supabaseClient
                     .from('Portefeuille')
                     .update({
                         quantity: newQty,
@@ -2298,7 +2299,7 @@
             }
         } else {
             const { error } = await applyPositionFilter(
-                supabase
+                supabaseClient
                     .from('Portefeuille')
                     .update({
                         quantity: 0,
@@ -2313,7 +2314,7 @@
 
         const cashCurrent = Number(lastCashRow?.current_price) || 0;
         const newCash = cashCurrent + proceeds;
-        const { error: cashError } = await supabase
+        const { error: cashError } = await supabaseClient
             .from('Portefeuille')
             .update({ quantity: newCash })
             .eq('groep_id', ACTIVE_GROUP_ID)
@@ -2391,7 +2392,7 @@
                 groep_id: ACTIVE_GROUP_ID
             };
 
-            const { data, error } = await supabase.from('Portefeuille').insert([payload]).select();
+            const { data, error } = await supabaseClient.from('Portefeuille').insert([payload]).select();
 
             if (error) {
                 console.warn("Kon geen cash row aanmaken (mogelijk geen rechten):", error);
@@ -2503,7 +2504,7 @@
 
     async function fetchLatestCashRow() {
         if (!ACTIVE_GROUP_ID) return null;
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('Portefeuille')
             .select('*')
             .eq('groep_id', ACTIVE_GROUP_ID)
