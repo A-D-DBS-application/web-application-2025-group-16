@@ -8,3 +8,5 @@ supabase
 requests
 yfinance
 google-generativeai
+rapidfuzz
+pandas
