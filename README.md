@@ -6,7 +6,6 @@
     OR: py -m venv .venv
 2) open a new terminal and you should see (.venv) 
 
-3) py -m pip install --upgrade pip
 4) py -m pip install -r requirements.txt 
 (Note: if py doesn't work, try it with python)
 5) create a .env file 
