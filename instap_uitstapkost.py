@@ -1,156 +1,185 @@
 from auth import (
-    get_cash_balance_for_group,
     get_group_by_id,
     list_group_members,
 )
 from market_data import get_latest_price
-from models import Portefeuille, SessionLocal
+from models import Portefeuille, SessionLocal,Transacties, Wisselkoersen
+from config import supabase
 
 
-def _safe_float(value, default=0.0):
+# -----------------------------
+# Helpers
+# -----------------------------
+def safe_float(value, default=0.0):
     try:
+        if value is None:
+            return default
         return float(value)
     except (TypeError, ValueError):
         return default
 
 
-def _load_positions(group_id):
+def load_positions(group_id):
     session = SessionLocal()
     try:
-        return session.query(Portefeuille).filter(Portefeuille.groep_id == group_id).all()
+        return session.query(Portefeuille) \
+            .filter(Portefeuille.groep_id == group_id) \
+            .all()
     finally:
         session.close()
 
+def get_fx_rate(session, munt):
+    if not munt or munt.upper() == "EUR":
+        return 1.0
 
+    row = session.query(Wisselkoersen).filter(
+        Wisselkoersen.munt == munt.upper()
+    ).first()
+
+    return float(row.wk) if row else 1.0
+
+
+
+# -----------------------------
+# NAV = Portefeuille (incl CASH)
+# -----------------------------
 def get_group_nav(group_id):
+    session = SessionLocal()
     try:
-        positions = _load_positions(group_id)
-        if not positions:
-            return 0.0
+        positions = session.query(Portefeuille).filter(
+            Portefeuille.groep_id == group_id
+        ).all()
 
-        price_cache = {}
         total = 0.0
+
         for pos in positions:
-            qty = _safe_float(pos.quantity)
+            qty = safe_float(pos.quantity)
             if qty == 0:
                 continue
 
-            ticker = (pos.ticker or "").upper()
+            ticker = pos.ticker.upper()
+
+            # CASH is altijd EUR
             if ticker == "CASH":
                 total += qty
                 continue
 
-            if ticker not in price_cache:
-                price = None
-                try:
-                    price = get_latest_price(ticker)
-                except Exception:
-                    price = None
-                if price is None or price <= 0:
-                    price = _safe_float(pos.avg_price)
-                price_cache[ticker] = _safe_float(price)
+            # 1️⃣ prijs in beursmunt (bv USD)
+            try:
+                price_native = get_latest_price(ticker)
+            except Exception:
+                price_native = safe_float(pos.avg_price)
 
-            total += qty * price_cache[ticker]
+            # 2️⃣ bepaal munt via laatste transactie
+            tx = session.query(Transacties).filter(
+                Transacties.portefeuille_id == pos.port_id
+            ).order_by(Transacties.datum_tr.desc()).first()
 
-        return total
+            munt = tx.munt if tx else "EUR"
+
+            # 3️⃣ wisselkoers
+            fx = get_fx_rate(session, munt)
+
+            # 4️⃣ omzetten naar EUR
+            price_eur = price_native / fx
+
+            total += qty * price_eur
+
+        return round(total, 2)
+
+    finally:
+        session.close()
+
+
+# -----------------------------
+# Liquiditeitsbuffer
+# -----------------------------
+def get_liquidity_balance(group_id):
+    try:
+        rows = supabase.table("Liquiditeit") \
+            .select("bedrag") \
+            .eq("groep_id", group_id) \
+            .execute().data
+
+        return sum(safe_float(r["bedrag"]) for r in rows) if rows else 0.0
     except Exception:
-        return None
+        return 0.0
 
 
-def get_total_liquidity(group_id):
-    ok, amount = get_cash_balance_for_group(group_id)
-    if not ok:
-        return None
-    return _safe_float(amount)
-
-
-def _member_count(group_id):
+# -----------------------------
+# Leden & instellingen
+# -----------------------------
+def get_member_count(group_id):
     ok, members = list_group_members(group_id)
     if not ok:
-        return False, members
-    return True, len(members or [])
+        return 0
+    return len(members or [])
 
 
-def _load_group_settings(group_id):
+def get_group_settings(group_id):
     ok, group = get_group_by_id(group_id)
-    if not ok:
-        return False, group
-    if not group:
-        return False, "Groep niet gevonden"
-    return True, group
+    if not ok or not group:
+        return None
+    return group
 
 
+# -----------------------------
+# Instap
+# -----------------------------
 def calculate_entry_cost(group_id):
-    try:
-        nav_total = get_group_nav(group_id)
-        if nav_total is None:
-            return False, "NAV kon niet berekend worden"
+    nav_total = get_group_nav(group_id)
+    leden = get_member_count(group_id)
+    settings = get_group_settings(group_id)
 
-        ok_count, leden = _member_count(group_id)
-        if not ok_count:
-            return False, leden
-        if leden == 0:
-            return False, "Geen leden gevonden"
+    if leden == 0 or not settings:
+        return False, "Geen leden of instellingen"
 
-        ok_settings, settings = _load_group_settings(group_id)
-        if not ok_settings:
-            return False, settings
+    nav_per_lid = nav_total / leden
+    instap_nav_pct = safe_float(settings.get("instap_nav_pct"))
 
-        nav_per_member = nav_total / leden
-        instap_nav_pct = _safe_float(settings.get("instap_nav_pct"))
+    nav_fee = nav_per_lid * (instap_nav_pct / 100)
+    entry_cost = nav_per_lid + nav_fee
 
-        nav_fee = nav_per_member * (instap_nav_pct / 100)
-        liq_fee = 0.0  # instappers betalen geen liquiditeitskost
-        entry_cost = nav_per_member + nav_fee + liq_fee
-
-        return True, {
-            "nav_per_member": nav_per_member,
-            "nav_fee": nav_fee,
-            "liq_fee": liq_fee,
-            "entry_cost": entry_cost,
-        }
-    except Exception as exc:
-        return False, str(exc)
+    return True, {
+        "nav_total": nav_total,
+        "nav_per_member": round(nav_per_lid, 2),
+        "nav_fee": round(nav_fee, 2),
+        "entry_cost": round(entry_cost, 2),
+    }
 
 
+# -----------------------------
+# Uitstap
+# -----------------------------
 def calculate_exit_cost(group_id):
-    try:
-        nav_total = get_group_nav(group_id)
-        if nav_total is None:
-            return False, "Kan NAV niet berekenen"
+    nav_total = get_group_nav(group_id)
+    leden = get_member_count(group_id)
+    settings = get_group_settings(group_id)
 
-        ok_count, leden = _member_count(group_id)
-        if not ok_count:
-            return False, leden
-        if leden == 0:
-            return False, "Geen leden"
+    if leden == 0 or not settings:
+        return False, "Geen leden of instellingen"
 
-        ok_settings, settings = _load_group_settings(group_id)
-        if not ok_settings:
-            return False, settings
+    nav_per_lid = nav_total / leden
 
-        nav_per_member = nav_total / leden if leden else 0.0
-        uitstap_nav_pct = _safe_float(settings.get("uitstap_nav_pct"))
-        uitstap_liq_pct = _safe_float(settings.get("uitstap_liq_pct"))
-        liq_per_lid = bool(settings.get("liq_per_lid"))
+    uitstap_nav_pct = safe_float(settings.get("uitstap_nav_pct"))
+    uitstap_liq_pct = safe_float(settings.get("uitstap_liq_pct"))
+    liq_per_lid = bool(settings.get("liq_per_lid"))
 
-        total_liq = get_total_liquidity(group_id)
-        if total_liq is None:
-            total_liq = 0.0
+    total_liq = get_liquidity_balance(group_id)
 
-        nav_fee = nav_per_member * (uitstap_nav_pct / 100)
-        if liq_per_lid and leden:
-            liq_fee = total_liq / leden
-        else:
-            liq_fee = (total_liq * (uitstap_liq_pct / 100)) / leden if leden else 0.0
+    nav_fee = nav_per_lid * (uitstap_nav_pct / 100)
 
-        exit_payout = nav_per_member - nav_fee - liq_fee
+    if liq_per_lid:
+        liq_fee = total_liq / leden
+    else:
+        liq_fee = (total_liq * (uitstap_liq_pct / 100)) / leden if leden else 0.0
 
-        return True, {
-            "nav_per_member": nav_per_member,
-            "nav_fee": nav_fee,
-            "liq_fee": liq_fee,
-            "exit_payout": exit_payout,
-        }
-    except Exception as exc:
-        return False, str(exc)
+    exit_payout = nav_per_lid - nav_fee - liq_fee
+
+    return True, {
+        "nav_total": nav_total,
+        "nav_per_member": round(nav_per_lid, 2),
+        "nav_fee": round(nav_fee, 2),
+        "liq_fee": round(liq_fee, 2),
+        "exit_payout": round(exit_payout, 2),
+    }

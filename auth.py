@@ -832,3 +832,14 @@ def update_member_role(group_id, member_id, new_role):
         return False, "Kon rol niet wijzigen (lid niet gevonden)."
     except Exception as e:
         return False, str(e)
+
+
+def get_liquidity_balance_for_group(group_id):
+    try:
+        rows = supabase.table("Liquiditeit") \
+            .select("bedrag") \
+            .eq("groep_id", group_id) \
+            .execute().data
+        return True, sum(float(r["bedrag"]) for r in rows) if rows else 0.0
+    except Exception as e:
+        return False, str(e)
