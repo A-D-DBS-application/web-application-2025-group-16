@@ -411,7 +411,7 @@ def analyze_stock():
 def analyze_portfolio():
     data = request.get_json()
     prompt = (
-        f"Maak een diepe analyse van deze portefeuille: {data}. Output mag geen tabellen bevatten, maar wel een mooie "
+        f"Maak een diepe globale analyse van deze portefeuille: {data}, geef ook een gestaafde redenering met betrekking op sector/risico-spreiding en eventuele verbeteringen. Output mag geen tabellen bevatten, maar wel een mooie "
         "opmaak titels en tussentitels mogen in het vet. Geef jouw antwoord in HTML."
     )
     return jsonify({"analysis": ai_manager.generate_ai_content_safe(prompt)})
