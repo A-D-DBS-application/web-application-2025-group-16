@@ -14,7 +14,7 @@
     
 SUPABASE_URL= "https://bpbvlfptoacijyqyugew.supabase.co"
 SUPABASE_ANON_KEY= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYnZsZnB0b2FjaWp5cXl1Z2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NDk2NzAsImV4cCI6MjA3NjIyNTY3MH0.6_z9bE3aB4QMt5ASE0bxM6Ds8Tf7189sBDUVLrUeU-M"
-GOOGLE_API_KEY=AIzaSyDPZKeXxfwRf46MPU8vN9k01GAzehhPOUo11111         #verwijder de laatst 5 '1' anders was de key leaked en werkte hij niet meer
+GOOGLE_API_KEY=AIzaSyDPZKeXxfwRf46MPU8vN9k01GAzehhPOUo11111         #verwijder de laatst 5 '1' anders was de AI key leaked en werkte hij niet meer
 DATABASE_URL=postgresql://postgres:HetProject2025!@db.bpbvlfptoacijyqyugew.supabase.co:5432/postgres
 
 (Note: )
