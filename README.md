@@ -16,7 +16,7 @@ SUPABASE_ANON_KEY= "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 GOOGLE_API_KEY=AIzaSyDPZKeXxfwRf46MPU8vN9k01GAzehhPOUo11111         #verwijder de laatst 5 '1' anders was de AI key leaked en werkte hij niet meer
 DATABASE_URL=postgresql://postgres:HetProject2025!@db.bpbvlfptoacijyqyugew.supabase.co:5432/postgres
 
-(Note: )
+(Note: Connection issues may occur due to security measures imposed by some Internet Providers. The application functions correctly on mobile data. )
 
 
 --Sprints--
