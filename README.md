@@ -20,6 +20,9 @@ DATABASE_URL=postgresql://postgres:HetProject2025!@db.bpbvlfptoacijyqyugew.supab
 
 
 --Sprints--
+
 Sprint1: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ugent_be/IQBbqIRZFg32QZzLMPANxzpiAQC-ZdiLjlZYzPS4W12-uw4
+
 Sprint2: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ugent_be/IQBh1ZLPiB3eSaPIy9LPDP2dAfx-BRd_9OPniwVmadJVciM
+
 Sprint3: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ugent_be/IQCeVyOq-3QZTLLPFy7CeKmxAffQc3KDBjDK02uCXyX5UeM
