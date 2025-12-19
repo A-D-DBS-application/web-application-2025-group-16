@@ -29,3 +29,10 @@ Sprint1: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ug
 Sprint2: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ugent_be/IQBh1ZLPiB3eSaPIy9LPDP2dAfx-BRd_9OPniwVmadJVciM
 
 Sprint3: https://ugentbe-my.sharepoint.com/:v:/g/personal/jinte_vanliedekerke_ugent_be/IQCeVyOq-3QZTLLPFy7CeKmxAffQc3KDBjDK02uCXyX5UeM
+
+--- Andere --- 
+In repository zal je volgende zaken ook nog vinden:user stories, het ERD model en de screenshots van de UI respectievelijk onder de namen
+- User stories.pdf
+- ERD.pdf
+- user_interface.pdf
+
