@@ -62,7 +62,6 @@ class TickerSearchEngine:
                         if len(sector) > len(existing['sector']):
                             existing['sector'] = sector
                     
-                    # Naam prioriteit: langste naam wint (maar niet als het gewoon de ticker is)
                     if name != ticker and (existing['name'] == ticker or len(name) > len(existing['name'])):
                         existing['name'] = name
                 else:
@@ -88,7 +87,6 @@ class TickerSearchEngine:
             if len(self.ticker_index) == 0:
                 self.ticker_index = self._get_seed_tickers()
             
-            # Laad uitgebreide database
             if load_extended:
                 try:
                     from ticker_database_loader import load_extended_ticker_database
@@ -114,10 +112,7 @@ class TickerSearchEngine:
         ]
     
     def _deduplicate_results(self, results: List[Dict]) -> List[Dict]:
-        """
-        Dedupliceer zoekresultaten op ticker.
-        Behoudt per ticker: hoogste score, beste naam, beste sector.
-        """
+        
         seen = {}
         
         for result in results:
@@ -140,7 +135,6 @@ class TickerSearchEngine:
                     if len(result['sector']) > len(existing['sector']):
                         existing['sector'] = result['sector']
                 
-                # Naam prioriteit: langste naam wint (maar niet als het gewoon de ticker is)
                 new_name = result['name']
                 if new_name != ticker and (existing['name'] == ticker or len(new_name) > len(existing['name'])):
                     existing['name'] = new_name
@@ -283,12 +277,10 @@ class TickerSearchEngine:
         self.ticker_index.append({'ticker': ticker, 'name': name, 'sector': sector})
 
 
-# Singleton instance
 _search_engine = None
 
 
 def get_search_engine():
-    """Retourneert singleton search engine instance."""
     global _search_engine
     if _search_engine is None:
         _search_engine = TickerSearchEngine()
